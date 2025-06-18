@@ -51,7 +51,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'forexaibackend.urls'
+ROOT_URLCONF = 'rootbackend.urls'
 
 TEMPLATES = [
     {
@@ -68,7 +68,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'forexaibackend.wsgi.application'
+WSGI_APPLICATION = 'rootbackend.wsgi.application'
 
 
 # Database
