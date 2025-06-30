@@ -1,1 +1,0 @@
-# PDF Parsing Service and Data Extraction Service

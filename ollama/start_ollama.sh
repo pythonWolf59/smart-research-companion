@@ -1,1 +1,0 @@
-# Ollama model boot script
