@@ -1,0 +1,1 @@
+# Frontend for Smart Research Companion
