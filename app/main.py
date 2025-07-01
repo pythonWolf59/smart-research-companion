@@ -6,7 +6,7 @@ from app.pdf_parser import parse_pdf
 from app.rag_qa import ask_question
 from app.extractor import extract_insights
 from app.chroma_handler import add_to_chroma, collection
-from app.citation_manager import extract_references, format_references
+from app.citation_manager import format_references, extract_references
 from app.paper_search import search_all_sources
 
 

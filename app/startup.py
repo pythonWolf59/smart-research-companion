@@ -4,7 +4,13 @@ model = None
 
 def ensure_model_ready():
     global model
-    if model is None:
-        model = GPT4All("path/to/phi-3-mini-quantized.bin")
-        print("Model loaded successfully")
+    model_path = "E:/Models/Llama-3.2-3B-Instruct-Q4_0.gguf"  # ✅ Must be a file, not a directory
+
+    model = GPT4All(model_name=model_path,
+                    n_ctx=16684,
+                    verbose=True)
+
+    print("✅ Model loaded successfully!")
+
+def get_model():
     return model

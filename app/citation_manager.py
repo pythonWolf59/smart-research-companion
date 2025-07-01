@@ -1,50 +1,68 @@
-import re
+from app.startup import get_model
 
-# Basic regex to detect reference-like patterns (you can improve this later)
-REFERENCE_REGEX = r"(.*?)\.\s\((\d{4})\)\.\s(.*?)(?:\.|\?|!)\s(.+?)(?:\n|$)"
+def extract_references(text: str) -> list[str]:
+    model = get_model()
+    """
+    Extract reference entries from the end of a research paper.
+    """
+    prompt = f"""
+You are an AI trained to extract citations from academic texts.
 
-def extract_references(text: str):
-    """
-    Extracts references from raw text using regex.
-    Returns list of dicts with 'authors', 'year', 'title', 'source'.
-    """
-    references = []
-    for match in re.finditer(REFERENCE_REGEX, text):
-        authors, year, title, source = match.groups()
-        references.append({
-            "authors": authors.strip(),
-            "year": year.strip(),
-            "title": title.strip(),
-            "source": source.strip()
-        })
+Extract and list all references from the following research paper text.
+Only include the references — no explanations or summaries.
+
+Paper:
+\"\"\"
+{text}
+\"\"\"
+
+Output:
+- Reference 1
+- Reference 2
+- ...
+"""
+    output = model.generate(
+        prompt=prompt,
+        max_tokens=4096
+    )
+    # Split output by lines or bullets
+    references = [line.strip("-• \n") for line in output.strip().splitlines() if line.strip()]
     return references
 
 
-def format_apa(ref):
-    return f"{ref['authors']} ({ref['year']}). {ref['title']}. {ref['source']}"
+def format_references(references: list[str], style: str = "APA") -> str:
+    """
+    Format references in the given style: APA or BibTeX.
+    """
+    model = get_model()
+    style = style.upper()
+    joined_refs = "\n".join(references)
 
-def format_mla(ref):
-    return f"{ref['authors']}. \"{ref['title']}.\" {ref['source']}, {ref['year']}."
+    if style == "BIBTEX":
+        prompt = f"""
+You are a BibTeX generator.
 
-def format_chicago(ref):
-    return f"{ref['authors']}. \"{ref['title']}.\" {ref['source']}, {ref['year']}."
+Convert the following raw reference list into properly formatted BibTeX entries.
 
-def format_bibtex(ref, i):
-    return f"""@article{{ref{i},
-  title={{ {ref['title']} }},
-  author={{ {ref['authors']} }},
-  journal={{ {ref['source']} }},
-  year={{ {ref['year']} }}
-}}"""
+References:
+\"\"\"
+{joined_refs}
+\"\"\"
 
-def format_references(refs, style="APA"):
-    formatter = {
-        "APA": format_apa,
-        "MLA": format_mla,
-        "Chicago": format_chicago,
-        "BibTeX": lambda ref, i: format_bibtex(ref, i)
-    }[style]
+Output:
+"""
+    else:  # default to APA
+        prompt = f"""
+You are an expert citation formatter.
 
-    if style == "BibTeX":
-        return "\n\n".join([formatter(r, i) for i, r in enumerate(refs)])
-    return "\n\n".join([formatter(r) for r in refs])
+Format the following references in {style} citation style.
+
+References:
+\"\"\"
+{joined_refs}
+\"\"\"
+
+Output:
+"""
+
+    return model.generate(prompt=prompt, max_tokens=4096).strip()
