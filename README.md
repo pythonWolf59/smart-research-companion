@@ -1,8 +1,8 @@
 # 🤖 Streamlined AI Research Assistant
 
-An intelligent, cost-effective, and blazing-fast AI research assistant built with **FastAPI**, **Streamlit**, and **Mistral 8B API**, designed for extracting structured insights from academic papers, performing paper Q&A, citation formatting, and multi-source paper search.
+An intelligent, cost-effective, and blazing-fast AI research assistant built with **FastAPI** and **Streamlit** designed for extracting structured insights from academic papers, performing paper Q&A, citation formatting, and multi-source paper search.
 
-> Powered by 🧠 [Mistral AI 8B Instruct](https://docs.mistral.ai) — fast, accurate, and affordable LLM.
+> Powered by AI🧠
 
 ---
 
