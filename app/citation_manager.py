@@ -1,7 +1,6 @@
-from app.startup import get_model
+from app.startup import mistral_api
 
 def extract_references(text: str) -> list[str]:
-    model = get_model()
     """
     Extract reference entries from the end of a research paper.
     """
@@ -21,10 +20,7 @@ Output:
 - Reference 2
 - ...
 """
-    output = model.generate(
-        prompt=prompt,
-        max_tokens=4096
-    )
+    output = mistral_api(prompt)
     # Split output by lines or bullets
     references = [line.strip("-• \n") for line in output.strip().splitlines() if line.strip()]
     return references
@@ -34,7 +30,7 @@ def format_references(references: list[str], style: str = "APA") -> str:
     """
     Format references in the given style: APA or BibTeX.
     """
-    model = get_model()
+    
     style = style.upper()
     joined_refs = "\n".join(references)
 
@@ -65,4 +61,4 @@ References:
 Output:
 """
 
-    return model.generate(prompt=prompt, max_tokens=4096).strip()
+    return mistral_api(prompt).strip()

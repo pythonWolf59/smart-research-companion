@@ -1,5 +1,5 @@
 from app.chroma_handler import get_similar_chunks
-from app.startup import get_model
+from app.startup import mistral_api
 
 def enforce_markdown_structure(text):
     required_fields = [
@@ -38,11 +38,7 @@ Below is the content of the research paper:
 Now extract the required information from the paper and format it strictly using the markdown template above. Fill in all sections where applicable. End your response with: ### END
 """
 
-    model = get_model()
-    response = model.generate(
-        prompt=prompt,
-        max_tokens=4096
-    )
+    response = mistral_api(prompt)
 
     extracted = response.split("### END")[0].strip()
     extracted = enforce_markdown_structure(extracted)

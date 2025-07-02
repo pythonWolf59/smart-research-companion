@@ -1,16 +1,24 @@
-from gpt4all import GPT4All
+import os
+from dotenv import load_dotenv
+from mistralai import Mistral
 
-model = None
+load_dotenv()
+api_key = os.getenv("MISTRAL_API_KEY")
+model = "ministral-8b-2410"
 
-def ensure_model_ready():
-    global model
-    model_path = "E:/Models/Llama-3.2-3B-Instruct-Q4_0.gguf"  # ✅ Must be a file, not a directory
+client = Mistral(api_key=api_key)
 
-    model = GPT4All(model_name=model_path,
-                    n_ctx=16684,
-                    verbose=True)
-
-    print("✅ Model loaded successfully!")
-
-def get_model():
-    return model
+def mistral_api(prompt):
+    chat_response = client.chat.complete(
+    model= model,
+    messages = [
+        {
+            "role": "system",
+            "content":  "You are an expert academic assistant. Your task is to provide responses as per user request. You will strictly structure your response in Markdown format. End your response with: ### END",
+            
+            "role": "user",
+            "content": f"{prompt}",
+        },
+    ]
+    )
+    return(chat_response.choices[0].message.content)

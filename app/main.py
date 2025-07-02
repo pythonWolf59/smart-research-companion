@@ -1,7 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, Form
-from contextlib import asynccontextmanager
 
-from app.startup import ensure_model_ready
 from app.pdf_parser import parse_pdf
 from app.rag_qa import ask_question
 from app.extractor import extract_insights
@@ -10,16 +8,7 @@ from app.citation_manager import format_references, extract_references
 from app.paper_search import search_all_sources
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Load model once at startup
-    model = ensure_model_ready()
-    app.state.model = model
-    yield
-    # Add shutdown logic here if needed
-
-
-app = FastAPI(title="Smart Research Assistant", lifespan=lifespan)
+app = FastAPI(title="Smart Research Assistant")
 
 
 @app.post("/upload/")
