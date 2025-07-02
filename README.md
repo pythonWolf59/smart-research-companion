@@ -1,87 +1,80 @@
-# 🧠 Local AI Research Assistant (FastAPI + Ollama + ChromaDB)
+# 🤖 Streamlined AI Research Assistant
 
-This project is a **fully local, offline-compatible AI research assistant** that allows you to:
-- Upload and summarize research papers (PDF)
-- Ask questions using Retrieval-Augmented Generation (RAG)
-- Store document vectors in **ChromaDB**
-- Run local LLMs like Mistral or Gemma using **Ollama**
-- Serve via **FastAPI**
-- (Optional) Interface with **Streamlit** frontend
+An intelligent, cost-effective, and blazing-fast AI research assistant built with **FastAPI**, **Streamlit**, and **Mistral 8B API**, designed for extracting structured insights from academic papers, performing paper Q&A, citation formatting, and multi-source paper search.
+
+> Powered by 🧠 [Mistral AI 8B Instruct](https://docs.mistral.ai) — fast, accurate, and affordable LLM.
 
 ---
 
-## 🛠 Tech Stack
+## 🚀 Features
 
-- **FastAPI** – for backend API
-- **Ollama** – run LLMs locally (Mistral/Gemma/etc.)
-- **ChromaDB** – vector database
-- **PyMuPDF** – PDF text extraction
-- **LlamaIndex** or **Haystack** – for document-based QA
-- **Supabase** – for auth/data (optional)
-- **Streamlit** – for optional frontend
+- ✅ **PDF Upload + Parsing**
+  - Extracts text from academic PDFs
+  - Automatically indexes content using ChromaDB for retrieval
+
+- 🧠 **Context-Aware Question Answering**
+  - Ask questions about the uploaded paper
+  - Uses RAG (Retrieval Augmented Generation) for accurate answers
+
+- 📄 **Insight Extraction**
+  - Extracts structured research metadata:
+    - Abstract
+    - Research Objectives or Questions
+    - Variables / Constructs
+    - Relationships
+    - Gaps & Future Directions
+  - Output is formatted in **Markdown**
+
+- 🔍 **Multi-Source Paper Search**
+  - Searches papers from:
+    - arXiv
+    - PubMed
+    - Semantic Scholar
+    - CORE
+
+- 🔖 **Citation Extraction & Formatting**
+  - Automatically extracts references from papers
+  - Supports formatting in:
+    - APA
+    - BibTeX
+
+- 🖥️ **Streamlit Frontend**
+  - Minimal, clean, and interactive research workflow UI
 
 ---
 
-## 📦 Project Structure
+## 🧱 Tech Stack
 
-```bash
-ai_research_assistant/
-├── app/
-│   ├── main.py
-│   ├── routes/
-│   ├── services/
-│   ├── models/
-├── rag/
-├── frontend/
-├── ollama/
-├── requirements.txt
-└── README.md
+| Layer       | Tool/Library        |
+|------------|---------------------|
+| Backend     | [FastAPI](https://fastapi.tiangolo.com) |
+| LLM         | [Mistral 8B Instruct API](https://docs.mistral.ai) |
+| RAG         | ChromaDB (local persistent vector store) |
+| Frontend    | [Streamlit](https://streamlit.io) |
+| PDF Parsing | PyMuPDF / pdfminer |
+| Citation    | LLM-based formatting using Mistral |
+| Paper Search| Official APIs / scraping from arXiv, PubMed, etc. |
 
 ---
 
-# 🚀 Getting Started
+---
 
-1.  **Install Ollama & a Model**
-
-    ```bash
-    curl -fsSL [https://ollama.com/install.sh](https://ollama.com/install.sh) | sh
-    ollama run mistral
-    ```
-
-2.  **Install Python Dependencies**
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3.  **Run FastAPI App**
-
-    ```bash
-    uvicorn app.main:app --reload
-    ```
-
-4.  **(Optional) Run Streamlit UI**
-
-    ```bash
-    streamlit run frontend/streamlit_app.py
-    ```
 
 # 🧪 Features
 
-* Local PDF summarization
-* Vector store with ChromaDB
-* FastAPI endpoints
-* Local LLM integration
-* Supabase user management
-* Semantic search across docs
-* Frontend dashboard (optional)
+* Search downloadable PDF papers from multiple sources
+* Upload Multiple PDF documents
+* Extract insights from PDF
+* Ask questions about uploaded document
+* Generate citations in any format for your uploaded pdf
 
 # 💡 Future Ideas
 
-* Multi-file indexing
-* Paper-to-slide converter
-* Citation auto-extraction
-* Academic question-answering bot
+* Support .docx upload
+* Generate Literature Review for uploaded paper
+* Research Assistant Chatbot
+* UI/UX Improvement
+* _I am open to feedback and constructive criticism please write to me at humxazakir11@gmail.com for any suggestions or improvements._
 
 # ⚖️ License
 
