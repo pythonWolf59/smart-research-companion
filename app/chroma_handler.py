@@ -1,10 +1,16 @@
 import chromadb
 from chromadb.config import Settings
+from dotenv import load_dotenv
+import os
 
-chroma_client = chromadb.Client(Settings(
-    persist_directory="./chroma_store",
-    anonymized_telemetry=False
-))
+# Load environment variables
+load_dotenv()
+
+chroma_client = chromadb.CloudClient(
+    api_key=os.getenv("CHROMA_API_KEY"),
+    tenant=os.getenv("CHROMA_TENANT"),
+    database=os.getenv("CHROMA_DATABASE"),
+)
 
 collection = chroma_client.get_or_create_collection("papers")
 
