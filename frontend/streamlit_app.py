@@ -130,7 +130,7 @@ elif menu == "📄 Upload & QA":
             with st.spinner("Extracting insights from all PDFs..."):
                 try:
                     # ✅ Properly pass multiple doc_id as query params
-                    res = requests.get(f"{BASE_URL}/extract/", params=[("doc_id", did) for did in st.session_state.doc_ids])
+                    res = requests.get(f"{BASE_URL}/extract/", params=[("doc_id", doc_id) for doc_id in st.session_state.doc_ids])
                     info = res.json().get("extracted_info")
                     with st.expander("🔍 View Extracted Insights"):
                         st.markdown(info, unsafe_allow_html=True)
