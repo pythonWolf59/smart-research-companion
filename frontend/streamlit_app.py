@@ -18,6 +18,7 @@ st.markdown("---")
 with st.sidebar:
     menu = st.radio("Navigate", ["🏠 Home", "🔍 Search Papers", "📄 Upload & QA", "📚 Citation Manager"])
 
+# ========== HOME ==========
 if menu == "🏠 Home":
     st.subheader("Welcome!")
     st.markdown("""
@@ -28,6 +29,7 @@ if menu == "🏠 Home":
     - Generate citations in different styles
     """)
 
+# ========== SEARCH PAPERS ==========
 elif menu == "🔍 Search Papers":
     st.subheader("🔍 Search Research Papers")
     query = st.text_input("Enter your topic")
@@ -51,6 +53,7 @@ elif menu == "🔍 Search Papers":
             except Exception as e:
                 st.error(f"Error: {e}")
 
+# ========== UPLOAD & QA ==========
 elif menu == "📄 Upload & QA":
     st.subheader("📄 Upload PDF(s) & Interact")
 
@@ -95,8 +98,8 @@ elif menu == "📄 Upload & QA":
                 with st.chat_message("assistant"):
                     with st.spinner("Thinking..."):
                         try:
-                            res = requests.post(f"{BASE_URL}/ask_multi/", json={
-                                "doc_ids": st.session_state.doc_ids,
+                            res = requests.post(f"{BASE_URL}/ask/", data={
+                                "doc_id": st.session_state.doc_ids,
                                 "question": user_query
                             })
                             answer = res.json().get("answer", "No response")
@@ -126,7 +129,8 @@ elif menu == "📄 Upload & QA":
         if extract_clicked:
             with st.spinner("Extracting insights from all PDFs..."):
                 try:
-                    res = requests.post(f"{BASE_URL}/extract_multi/", json={"doc_ids": st.session_state.doc_ids})
+                    # ✅ Properly pass multiple doc_id as query params
+                    res = requests.get(f"{BASE_URL}/extract/", params=[("doc_id", did) for did in st.session_state.doc_ids])
                     info = res.json().get("extracted_info")
                     with st.expander("🔍 View Extracted Insights"):
                         st.markdown(info, unsafe_allow_html=True)
@@ -149,6 +153,7 @@ elif menu == "📄 Upload & QA":
                 except Exception as e:
                     st.error(f"Error: {e}")
 
+# ========== CITATION MANAGER ==========
 elif menu == "📚 Citation Manager":
     st.subheader("📚 Citation Manager")
 
@@ -166,7 +171,7 @@ elif menu == "📚 Citation Manager":
                 st.markdown("### 📄 Formatted Citations")
                 st.code(citations, language="text")
 
-                if st.button("📤 Export Citations as .txt"):
+                if citations and st.button("📤 Export Citations as .txt"):
                     citation_txt = BytesIO(citations.encode("utf-8"))
                     st.download_button("⬇️ Download Citations", data=citation_txt, file_name="citations.txt", mime="text/plain")
             except Exception as e:
