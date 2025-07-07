@@ -5,7 +5,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
 # ✅ Step 1: Centralized base URL
-BASE_URL = "http://localhost:8000"
+BASE_URL = "https://smart-research-companion.onrender.com"
 
 st.set_page_config(page_title="Smart Research Assistant", layout="wide")
 
