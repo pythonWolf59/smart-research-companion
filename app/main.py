@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, UploadFile, Request
+from fastapi import FastAPI, File, UploadFile, Form
 from typing import List, Union
 
 from app.pdf_parser import parse_pdf
@@ -31,16 +31,31 @@ async def upload_multiple_pdfs(files: List[UploadFile] = File(...)):
 @app.post("/ask/")
 def question(doc_id: Union[str, List[str]] = Form(...), question: str = Form(...)):
     if isinstance(doc_id, str):
-        doc_id = [doc_id]  # wrap into list for consistency
-    answers = [ask_question(did, question) for did in doc_id]
-    return {"answer": "\n\n".join(answers)}
+        doc_id = [doc_id]  # wrap single ID into list
+    answers = []
+    for did in doc_id:
+        try:
+            ans = ask_question(did, question)
+            if ans:
+                answers.append(ans)
+        except Exception as e:
+            answers.append(f"[Error for doc_id={did}]: {e}")
+    final_answer = "\n\n".join(answers) if answers else "No response available."
+    return {"answer": final_answer}  # ✅ Fixed to return dict
 
 
 @app.get("/extract/")
 def extract(doc_id: Union[str, List[str]]):
     if isinstance(doc_id, str):
         doc_id = [doc_id]
-    insights_list = [extract_insights(did).get("extracted_info", "") for did in doc_id]
+    insights_list = []
+    for did in doc_id:
+        try:
+            info = extract_insights(did).get("extracted_info", "")
+            if info:
+                insights_list.append(info)
+        except Exception as e:
+            insights_list.append(f"[Error for doc_id={did}]: {e}")
     return {"extracted_info": "\n\n".join(insights_list)}
 
 
