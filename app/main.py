@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, Query
 from typing import List, Union
 
 from app.pdf_parser import parse_pdf
@@ -45,17 +45,8 @@ def question(doc_id: Union[str, List[str]] = Form(...), question: str = Form(...
 
 
 @app.get("/extract/")
-def extract(doc_id: Union[str, List[str]]):
-    if isinstance(doc_id, str):
-        doc_id = [doc_id]
-    insights_list = []
-    for did in doc_id:
-        try:
-            info = extract_insights(did).get("extracted_info", "")
-            if info:
-                insights_list.append(info)
-        except Exception as e:
-            insights_list.append(f"[Error for doc_id={did}]: {e}")
+def extract(doc_id: List[str] = Query(...)):
+    insights_list = [extract_insights(did).get("extracted_info", "") for did in doc_id]
     return {"extracted_info": "\n\n".join(insights_list)}
 
 
