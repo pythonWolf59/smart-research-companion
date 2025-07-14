@@ -20,17 +20,28 @@ class ChromaHandler:
     def __init__(self, collection):
         self.collection = collection
 
-    def _chunk_text(self, text, max_chunk_size=500):
+    def _chunk_text(self, text, max_chunk_size=500, max_total_bytes=16000):
         paragraphs = text.split("\n\n")
         chunks, chunk = [], ""
+        total_bytes = 0
+
         for para in paragraphs:
-            if len(chunk) + len(para) < max_chunk_size:
-                chunk += para + "\n"
-            else:
-                chunks.append(chunk.strip())
-                chunk = para + "\n"
-        if chunk:
-            chunks.append(chunk.strip())
+            candidate_chunk = chunk + para + "\n"
+            encoded = candidate_chunk.strip().encode("utf-8")
+
+            if len(encoded) > max_chunk_size:
+                continue
+
+            if total_bytes + len(encoded) > max_total_bytes:
+                break
+
+            chunk = candidate_chunk
+            if len(chunk.encode("utf-8")) >= max_chunk_size or para == paragraphs[-1]:
+                final = chunk.strip()
+                chunks.append(final)
+                total_bytes += len(final.encode("utf-8"))
+                chunk = ""
+
         return chunks
 
     def _generate_doc_tag(self, content_bytes):
@@ -52,15 +63,13 @@ class ChromaHandler:
             where_filter = {"doc_tag": {"$in": doc_tags}}
         else:
             where_filter = {}
-        
+
         results = self.collection.query(query_texts=[query], n_results=n_results, where=where_filter)
-        
-        results = self.collection.query(...)
+
         return {
                 "chunks": results["documents"][0],
                 "metadatas": results["metadatas"][0],
                 }
-
 
     def delete_document(self, doc_tag):
         self.collection.delete(where={"doc_tag": doc_tag})
