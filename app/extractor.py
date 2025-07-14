@@ -1,5 +1,7 @@
-from app.chroma_handler import get_similar_chunks
+from app.chroma_handler import ChromaHandler, collection
 from app.startup import mistral_api
+
+chroma = ChromaHandler(collection)
 
 def enforce_markdown_structure(text):
     required_fields = [
@@ -11,13 +13,19 @@ def enforce_markdown_structure(text):
             text += f"\n{field}: \n"
     return text.strip()
 
-def extract_insights(doc_id):
-    context = "\n".join(get_similar_chunks("research paper analysis"))
+def extract_insights(doc_ids: list[str]):
+    # Get top relevant chunks from all selected documents
+    chunks = chroma.get_similar_chunks("research paper analysis", doc_tags=doc_ids)
+    
+    if not chunks:
+        return {"extracted_info": "No relevant content found in the selected documents."}
+
+    context = "\n".join(chunks)
 
     prompt = f"""
 You are an expert academic assistant.
 
-Your task is to extract structured information from an academic research paper using the exact markdown format below:
+Your task is to extract structured information from multiple research papers using the exact markdown format below:
 
 ---
 ###**Title**:  
@@ -29,17 +37,16 @@ Your task is to extract structured information from an academic research paper u
 ###**Gaps or Future Research Directions**:
 ---
 
-Below is the content of the research paper:
+Below is a combined content sample from several research papers:
 
 \"\"\" 
 {context} 
 \"\"\"
 
-Now extract the required information from the paper and format it strictly using the markdown template above. Fill in all sections where applicable. End your response with: ### END
+Now extract and summarize the required information as one coherent overview. Format it strictly using the markdown template above. End your response with: ### END
 """
 
     response = mistral_api(prompt)
-
     extracted = response.split("### END")[0].strip()
     extracted = enforce_markdown_structure(extracted)
 

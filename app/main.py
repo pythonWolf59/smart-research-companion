@@ -16,12 +16,9 @@ chroma = ChromaHandler(collection)
 async def upload_paper(file: UploadFile = File(...)):
     contents = await file.read()
     text = parse_pdf(contents)
-
     doc_tag = chroma._generate_doc_tag(contents)
     chroma.add_document(text, doc_tag)
-
     return {"doc_id": doc_tag, "message": "PDF uploaded and indexed."}
-
 
 
 @app.post("/upload_multiple/")
@@ -32,38 +29,39 @@ async def upload_multiple_pdfs(files: List[UploadFile] = File(...)):
         text = parse_pdf(contents)
         doc_tag = chroma._generate_doc_tag(contents)
         chroma.add_document(text, doc_tag)
+        doc_ids.append(doc_tag)
     return {"doc_ids": doc_ids, "message": f"{len(doc_ids)} PDFs uploaded and indexed."}
 
 
 @app.post("/ask/")
 def question(doc_id: Union[str, List[str]] = Form(...), question: str = Form(...)):
-    if isinstance(doc_id, str):
-        doc_id = [doc_id]  # wrap single ID into list
-    answers = []
-    for did in doc_id:
-        try:
-            ans = ask_question(did, question)
-            if ans:
-                answers.append(ans)
-        except Exception as e:
-            answers.append(f"[Error for doc_id={did}]: {e}")
-    final_answer = "\n\n".join(answers) if answers else "No response available."
-    return {"answer": final_answer}  # ✅ Fixed to return dict
+    doc_ids = [doc_id] if isinstance(doc_id, str) else doc_id
+    try:
+        answer = ask_question(doc_ids, question)
+        return {"answer": answer}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.get("/extract/")
 def extract(doc_id: List[str] = Query(...)):
-    insights_list = [extract_insights(did).get("extracted_info", "") for did in doc_id]
-    return {"extracted_info": "\n\n".join(insights_list)}
+    try:
+        insights = extract_insights(doc_id)  # accepts list[str]
+        return insights
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.post("/citations/")
 def get_citations(doc_id: str = Form(...), style: str = Form("APA")):
-    results = collection.get()
-    full_text = "\n".join(results['documents'])
-    refs = extract_references(full_text)
-    formatted = format_references(refs, style=style)
-    return {"citations": formatted}
+    try:
+        results = collection.get(where={"doc_tag": doc_id})
+        full_text = "\n".join(results['documents'])
+        refs = extract_references(full_text)
+        formatted = format_references(refs, style=style)
+        return {"citations": formatted}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.get("/search_papers/")
