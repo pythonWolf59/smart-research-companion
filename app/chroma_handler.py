@@ -3,6 +3,7 @@ from chromadb.config import Settings
 from dotenv import load_dotenv
 import os
 import hashlib
+import re
 
 # Load environment variables
 load_dotenv()
@@ -20,33 +21,36 @@ class ChromaHandler:
     def __init__(self, collection):
         self.collection = collection
 
-    def _chunk_text(self, text, max_chunk_size=500, max_total_bytes=16000):
-        paragraphs = text.split("\n\n")
-        chunks, chunk = [], ""
+    def _chunk_text(self, text, max_chunk_size=1000, overlap_size=200, max_total_bytes=16000):
+        sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+        chunks = []
+        current_chunk = ""
         total_bytes = 0
+        i = 0
 
-        for para in paragraphs:
-            candidate = (chunk + para + "\n").strip()
-            encoded = candidate.encode("utf-8")
+        while i < len(sentences):
+            while i < len(sentences) and len(current_chunk) + len(sentences[i]) <= max_chunk_size:
+                current_chunk += sentences[i] + " "
+                i += 1
 
-            if len(encoded) > max_chunk_size:
-                continue  # skip large paragraphs
+            chunk = current_chunk.strip()
+            encoded = chunk.encode("utf-8")
 
             if total_bytes + len(encoded) > max_total_bytes:
                 break
 
-            chunk = candidate
             chunks.append(chunk)
             total_bytes += len(encoded)
-            chunk = ""  # reset for next chunk
 
-        # Fallback: if no chunk made it
-        if not chunks and text:
-            encoded_text = text.encode("utf-8")
-            if len(encoded_text) <= max_total_bytes:
-                chunks.append(text.strip())
-            else:
-                chunks.append(encoded_text[:max_total_bytes].decode("utf-8", errors="ignore"))
+            # Create overlap
+            overlap_tokens = chunk[-overlap_size:].split() if overlap_size else []
+            current_chunk = " ".join(overlap_tokens) + " " if overlap_tokens else ""
+
+        # Add last chunk if not added
+        if current_chunk.strip():
+            encoded = current_chunk.strip().encode("utf-8")
+            if total_bytes + len(encoded) <= max_total_bytes:
+                chunks.append(current_chunk.strip())
 
         return chunks
 
@@ -56,28 +60,19 @@ class ChromaHandler:
     def add_document(self, text, doc_tag):
         self.collection.delete(where={"doc_tag": doc_tag})
         chunks = self._chunk_text(text)
-
         if not chunks:
-            raise ValueError("No valid chunks could be created from the document.")
-
+            raise ValueError("Document too large or empty. No chunks generated.")
         ids = [f"{doc_tag}_chunk_{i}" for i in range(len(chunks))]
         metadata = [{"doc_tag": doc_tag} for _ in chunks]
-
         self.collection.add(documents=chunks, ids=ids, metadatas=metadata)
         return doc_tag
 
     def get_similar_chunks(self, query, doc_tags=None, n_results=5):
         where_filter = {"doc_tag": {"$in": doc_tags}} if doc_tags else {}
-
-        results = self.collection.query(
-            query_texts=[query],
-            n_results=n_results,
-            where=where_filter
-        )
-
+        results = self.collection.query(query_texts=[query], n_results=n_results, where=where_filter)
         return {
-            "chunks": results["documents"][0] if results["documents"] else [],
-            "metadatas": results["metadatas"][0] if results["metadatas"] else [],
+            "chunks": results["documents"][0],
+            "metadatas": results["metadatas"][0],
         }
 
     def delete_document(self, doc_tag):
