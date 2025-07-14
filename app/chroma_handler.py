@@ -47,9 +47,20 @@ class ChromaHandler:
         self.collection.add(documents=chunks, ids=ids, metadatas=metadata)
         return doc_tag
 
-    def get_similar_chunks(self, query, n_results=5):
-        results = self.collection.query(query_texts=[query], n_results=n_results)
-        return results['documents'][0] if results['documents'] else []
+    def get_similar_chunks(self, query, doc_tags=None, n_results=5):
+        if doc_tags:
+            where_filter = {"doc_tag": {"$in": doc_tags}}
+        else:
+            where_filter = {}
+        
+        results = self.collection.query(query_texts=[query], n_results=n_results, where=where_filter)
+        
+        results = self.collection.query(...)
+        return {
+                "chunks": results["documents"][0],
+                "metadatas": results["metadatas"][0],
+                }
+
 
     def delete_document(self, doc_tag):
         self.collection.delete(where={"doc_tag": doc_tag})
