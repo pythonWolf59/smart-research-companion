@@ -20,7 +20,7 @@ def extract_insights(doc_ids: list[str]):
     if not chunks:
         return {"extracted_info": "No relevant content found in the selected documents."}
 
-    context = "\n".join(chunks)
+    context = "\n".join(chunks["chunks"])
 
     prompt = f"""
 You are an expert academic assistant.
