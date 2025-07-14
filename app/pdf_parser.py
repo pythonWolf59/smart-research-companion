@@ -1,6 +1,9 @@
+# app/pdf_parser.py
 import fitz  # PyMuPDF
 
-def parse_pdf(file):
-    doc = fitz.open(stream=file.file.read(), filetype="pdf")
-    text = "\n".join([page.get_text() for page in doc])
-    return text
+def parse_pdf(pdf_bytes: bytes) -> str:
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    return text.strip()
