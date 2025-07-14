@@ -4,27 +4,34 @@ from typing import List, Union
 from app.pdf_parser import parse_pdf
 from app.rag_qa import ask_question
 from app.extractor import extract_insights
-from app.chroma_handler import add_to_chroma, collection
+from app.chroma_handler import ChromaHandler, collection
 from app.citation_manager import format_references, extract_references
 from app.paper_search import search_all_sources
 
 app = FastAPI(title="Smart Research Assistant")
 
+chroma = ChromaHandler(collection)
 
 @app.post("/upload/")
 async def upload_paper(file: UploadFile = File(...)):
-    text = parse_pdf(file)
-    doc_id = add_to_chroma(text)
-    return {"doc_id": doc_id, "message": "PDF uploaded and indexed."}
+    contents = await file.read()
+    text = parse_pdf(contents)
+
+    doc_tag = chroma._generate_doc_tag(contents)
+    chroma.add_document(text, doc_tag)
+
+    return {"doc_id": doc_tag, "message": "PDF uploaded and indexed."}
+
 
 
 @app.post("/upload_multiple/")
 async def upload_multiple_pdfs(files: List[UploadFile] = File(...)):
     doc_ids = []
     for file in files:
-        text = parse_pdf(file)
-        doc_id = add_to_chroma(text)
-        doc_ids.append(doc_id)
+        contents = await file.read()
+        text = parse_pdf(contents)
+        doc_tag = chroma._generate_doc_tag(contents)
+        chroma.add_document(text, doc_tag)
     return {"doc_ids": doc_ids, "message": f"{len(doc_ids)} PDFs uploaded and indexed."}
 
 
