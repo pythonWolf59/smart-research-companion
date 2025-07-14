@@ -13,9 +13,18 @@ app = FastAPI(title="Smart Research Assistant")
 
 @app.post("/upload/")
 async def upload_paper(file: UploadFile = File(...)):
-    text = parse_pdf(file)
-    doc_id = add_to_chroma(text)
-    return {"doc_id": doc_id, "message": "PDF uploaded and indexed."}
+    # Step 1: Read and parse
+    contents = await file.read()
+    text = parse_pdf(contents)
+
+    # Step 2: Use filename (or timestamp) as unique doc_tag
+    doc_tag = file.filename.replace(" ", "_")  # Or use hash(contents)
+
+    # Step 3: Add to Chroma with cleanup
+    add_to_chroma(text, doc_tag=doc_tag)
+
+    return {"doc_id": doc_tag, "message": "PDF uploaded and indexed."}
+
 
 
 @app.post("/ask/")
