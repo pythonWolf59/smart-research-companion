@@ -8,8 +8,11 @@ BASE_URL = "https://smart-research-companion.onrender.com"
 st.set_page_config(page_title="Smart Research Assistant", layout="wide")
 
 # Initialize session state
-st.session_state.setdefault("doc_ids", [])
+st.session_state.setdefault("doc_titles", [])
 st.session_state.setdefault("chat_history", [])
+st.session_state.setdefault("show_chat", False)
+st.session_state.setdefault("show_insights", False)
+st.session_state.setdefault("selected_title", "")
 
 # UI Layout
 st.markdown("<h1 style='text-align: center;'>🧠 Smart Research Assistant</h1>", unsafe_allow_html=True)
@@ -29,7 +32,7 @@ if menu == "🏠 Home":
     - Generate citations in different styles
     """)
 
-# ========== SEARCH PAPERS ==========
+# ========== SEARCH ==========
 elif menu == "🔍 Search Papers":
     st.subheader("🔍 Search Research Papers")
     query = st.text_input("Enter your topic")
@@ -66,31 +69,38 @@ elif menu == "📄 Upload & QA":
                 for file in uploaded_files:
                     files = {"file": (file.name, file, "application/pdf")}
                     res = requests.post(f"{BASE_URL}/upload/", files=files)
-                    doc_id = res.json().get("doc_id")
-                    if doc_id:
-                        st.session_state.doc_ids.append(doc_id)
+                    doc_title = res.json().get("doc_title")
+                    if doc_title:
+                        st.session_state.doc_titles.append(doc_title)
                 st.session_state.chat_history.clear()
-                st.success(f"Uploaded {len(st.session_state.doc_ids)} PDF(s) successfully.")
+                st.success(f"Uploaded {len(st.session_state.doc_titles)} PDF(s) successfully.")
             except Exception as e:
                 st.error(f"Error: {e}")
 
-    if st.session_state.doc_ids:
+    if st.session_state.doc_titles:
+        # Document title input (required once)
+        st.session_state.selected_title = st.text_input(
+            "Enter the title (first 5 words used during chunking):",
+            value=st.session_state.selected_title
+        )
+
         col1, col2 = st.columns([1, 1])
         with col1:
-            ask_clicked = st.button("💬 Ask Questions")
+            if st.button("💬 Ask Questions"):
+                st.session_state.show_chat = True
         with col2:
-            extract_clicked = st.button("🧠 Extract Research Insights")
+            if st.button("🧠 Extract Research Insights"):
+                st.session_state.show_insights = True
 
-        # 🔸 Chat Interface
-        if ask_clicked or st.session_state.get("show_chat", False):
-            st.session_state.show_chat = True
+        # 💬 Ask Questions Interface
+        if st.session_state.show_chat:
             st.markdown("#### 💬 Chat with the AI")
 
             for msg in st.session_state.chat_history:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
 
-            user_query = st.chat_input("Ask something about the uploaded papers...")
+            user_query = st.chat_input("Ask something about the uploaded paper...")
             if user_query:
                 st.session_state.chat_history.append({"role": "user", "content": user_query})
                 with st.chat_message("user"):
@@ -99,7 +109,7 @@ elif menu == "📄 Upload & QA":
                     with st.spinner("Thinking..."):
                         try:
                             res = requests.post(f"{BASE_URL}/ask/", data={
-                                "doc_id": st.session_state.doc_ids,
+                                "title": st.session_state.selected_title,
                                 "question": user_query
                             })
                             answer = res.json().get("answer", "No response")
@@ -114,7 +124,6 @@ elif menu == "📄 Upload & QA":
                     c = canvas.Canvas(buffer, pagesize=letter)
                     textobject = c.beginText(40, 750)
                     textobject.setFont("Helvetica", 11)
-
                     for msg in st.session_state.chat_history:
                         for line in f"{msg['role'].capitalize()}: {msg['content']}".split("\n"):
                             textobject.textLine(line)
@@ -125,13 +134,12 @@ elif menu == "📄 Upload & QA":
                     buffer.seek(0)
                     st.download_button("⬇️ Download Chat PDF", data=buffer, file_name="chat_history.pdf", mime="application/pdf")
 
-        # 🔸 Insights Interface
-        if extract_clicked:
-            with st.spinner("Extracting insights from all PDFs..."):
+        # 🧠 Insights Interface
+        if st.session_state.show_insights:
+            with st.spinner("Extracting insights..."):
                 try:
-                    # ✅ Properly pass multiple doc_id as query params
-                    res = requests.get(f"{BASE_URL}/extract/", params=[("doc_id", doc_id) for doc_id in st.session_state.doc_ids])
-                    info = res.json().get("extracted_info")
+                    res = requests.get(f"{BASE_URL}/extract/", params={"title": st.session_state.selected_title})
+                    info = res.json().get("extracted_info", "No insights found.")
                     with st.expander("🔍 View Extracted Insights"):
                         st.markdown(info, unsafe_allow_html=True)
 
@@ -140,15 +148,12 @@ elif menu == "📄 Upload & QA":
                         c = canvas.Canvas(buffer, pagesize=letter)
                         textobject = c.beginText(40, 750)
                         textobject.setFont("Helvetica", 11)
-
                         for line in info.split("\n"):
                             textobject.textLine(line)
-
                         c.drawText(textobject)
                         c.showPage()
                         c.save()
                         buffer.seek(0)
-
                         st.download_button("⬇️ Download Insights PDF", data=buffer, file_name="insights.pdf", mime="application/pdf")
                 except Exception as e:
                     st.error(f"Error: {e}")
