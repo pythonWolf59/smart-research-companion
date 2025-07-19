@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, Form, Query
 from typing import List, Union
+import os
 
 from app.pdf_parser import parse_pdf
 from app.rag_qa import ask_question
@@ -12,32 +13,39 @@ app = FastAPI(title="Smart Research Assistant")
 
 chroma = ChromaHandler(collection)
 
+
+def extract_title(file: UploadFile) -> str:
+    filename = os.path.splitext(file.filename)[0]
+    return filename
+
+
 @app.post("/upload/")
 async def upload_paper(file: UploadFile = File(...)):
     contents = await file.read()
     text = parse_pdf(contents)
     doc_tag = chroma._generate_doc_tag(contents)
-    chroma.add_document(text, doc_tag)
-    return {"doc_id": doc_tag, "message": "PDF uploaded and indexed."}
+    title = extract_title(file)
+    title_slug = chroma.add_document(text, doc_tag, title)
+    return {"doc_title": title_slug, "message": "PDF uploaded and indexed."}
 
 
 @app.post("/upload_multiple/")
 async def upload_multiple_pdfs(files: List[UploadFile] = File(...)):
-    doc_ids = []
+    titles = []
     for file in files:
         contents = await file.read()
         text = parse_pdf(contents)
         doc_tag = chroma._generate_doc_tag(contents)
-        chroma.add_document(text, doc_tag)
-        doc_ids.append(doc_tag)
-    return {"doc_ids": doc_ids, "message": f"{len(doc_ids)} PDFs uploaded and indexed."}
+        title = extract_title(file)
+        title_slug = chroma.add_document(text, doc_tag, title)
+        titles.append(title_slug)
+    return {"doc_titles": titles, "message": f"{len(titles)} PDFs uploaded and indexed."}
 
 
 @app.post("/ask/")
-def question(doc_id: Union[str, List[str]] = Form(...), question: str = Form(...)):
-    doc_ids = [doc_id] if isinstance(doc_id, str) else doc_id
+def question(doc_title: str = Form(...), question: str = Form(...)):
     try:
-        answer = ask_question(doc_ids, question)
+        answer = ask_question(doc_title, question)
         return {"answer": answer}
     except Exception as e:
         return {"error": str(e)}
@@ -46,7 +54,7 @@ def question(doc_id: Union[str, List[str]] = Form(...), question: str = Form(...
 @app.get("/extract/")
 def extract(doc_id: List[str] = Query(...)):
     try:
-        insights = extract_insights(doc_id)  # accepts list[str]
+        insights = extract_insights(doc_id)
         return insights
     except Exception as e:
         return {"error": str(e)}
