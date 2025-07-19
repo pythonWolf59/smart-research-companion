@@ -13,11 +13,9 @@ app = FastAPI(title="Smart Research Assistant")
 
 chroma = ChromaHandler(collection)
 
-
 def extract_title(file: UploadFile) -> str:
     filename = os.path.splitext(file.filename)[0]
     return filename
-
 
 @app.post("/upload/")
 async def upload_paper(file: UploadFile = File(...)):
@@ -27,7 +25,6 @@ async def upload_paper(file: UploadFile = File(...)):
     title = extract_title(file)
     title_slug = chroma.add_document(text, doc_tag, title)
     return {"doc_title": title_slug, "message": "PDF uploaded and indexed."}
-
 
 @app.post("/upload_multiple/")
 async def upload_multiple_pdfs(files: List[UploadFile] = File(...)):
@@ -41,7 +38,6 @@ async def upload_multiple_pdfs(files: List[UploadFile] = File(...)):
         titles.append(title_slug)
     return {"doc_titles": titles, "message": f"{len(titles)} PDFs uploaded and indexed."}
 
-
 @app.post("/ask/")
 def question(doc_title: str = Form(...), question: str = Form(...)):
     try:
@@ -50,27 +46,24 @@ def question(doc_title: str = Form(...), question: str = Form(...)):
     except Exception as e:
         return {"error": str(e)}
 
-
 @app.get("/extract/")
-def extract(doc_id: List[str] = Query(...)):
+def extract(doc_title: str = Query(...)):
     try:
-        insights = extract_insights(doc_id)
+        insights = extract_insights(doc_title)
         return insights
     except Exception as e:
         return {"error": str(e)}
 
-
 @app.post("/citations/")
-def get_citations(doc_id: str = Form(...), style: str = Form("APA")):
+def get_citations(doc_title: str = Form(...), style: str = Form("APA")):
     try:
-        results = collection.get(where={"doc_tag": doc_id})
+        results = collection.get(where={"doc_title": doc_title})
         full_text = "\n".join(results['documents'])
         refs = extract_references(full_text)
         formatted = format_references(refs, style=style)
         return {"citations": formatted}
     except Exception as e:
         return {"error": str(e)}
-
 
 @app.get("/search_papers/")
 def search_papers(query: str, max_results: int = 5):
