@@ -70,11 +70,10 @@ elif menu == "📄 Upload & QA":
                     files = {"file": (file.name, file, "application/pdf")}
                     res = requests.post(f"{BASE_URL}/upload/", files=files)
                     doc_title = res.json().get("doc_title")
-                    print(doc_title)
                     if doc_title:
                         st.session_state.doc_titles.append(doc_title)
                 st.session_state.chat_history.clear()
-                st.success(f"Uploaded {len(st.session_state.doc_titles)} PDF(s) successfully.")
+                st.success(f"Upload {len(st.session_state.doc_titles)} PDF(s) successfully.")
             except Exception as e:
                 st.error(f"Error: {e}")
 
