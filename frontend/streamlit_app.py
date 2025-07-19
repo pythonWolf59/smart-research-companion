@@ -50,7 +50,7 @@ elif menu == "🔍 Search Papers":
                     st.markdown(f"## 🔹 Source: {source.capitalize()}")
                     for paper in papers:
                         st.markdown(f"**{paper['title']}**")
-                        st.markdown(f"📝 *Summary:* {paper['summary'][:500]}...")
+                        st.markdown(f"📜 *Summary:* {paper['summary'][:500]}...")
                         st.markdown(f"[🔗 View]({paper['url']})", unsafe_allow_html=True)
                         st.markdown("---")
             except Exception as e:
@@ -65,7 +65,7 @@ elif menu == "📄 Upload & QA":
     if uploaded_files and st.button("Upload"):
         with st.spinner("Uploading and indexing..."):
             try:
-                st.session_state.doc_ids.clear()
+                st.session_state.doc_titles.clear()
                 for file in uploaded_files:
                     files = {"file": (file.name, file, "application/pdf")}
                     res = requests.post(f"{BASE_URL}/upload/", files=files)
@@ -73,12 +73,11 @@ elif menu == "📄 Upload & QA":
                     if doc_title:
                         st.session_state.doc_titles.append(doc_title)
                 st.session_state.chat_history.clear()
-                st.success(f"Upload {len(st.session_state.doc_titles)} PDF(s) successfully.")
+                st.success(f"Uploaded {len(st.session_state.doc_titles)} PDF(s) successfully.")
             except Exception as e:
                 st.error(f"Error: {e}")
 
     if st.session_state.doc_titles:
-        # Document title input (required once)
         st.session_state.selected_title = st.text_input(
             "Enter the title (first 5 words used during chunking):",
             value=st.session_state.selected_title
@@ -92,7 +91,7 @@ elif menu == "📄 Upload & QA":
             if st.button("🧠 Extract Research Insights"):
                 st.session_state.show_insights = True
 
-        # 💬 Ask Questions Interface
+        # 💬 Chat Interface
         if st.session_state.show_chat:
             st.markdown("#### 💬 Chat with the AI")
 
@@ -119,7 +118,7 @@ elif menu == "📄 Upload & QA":
                             st.error(f"Error: {e}")
 
             if st.session_state.chat_history:
-                if st.button("📥 Export Chat as PDF"):
+                if st.button("📅 Export Chat as PDF"):
                     buffer = BytesIO()
                     c = canvas.Canvas(buffer, pagesize=letter)
                     textobject = c.beginText(40, 750)
@@ -143,7 +142,7 @@ elif menu == "📄 Upload & QA":
                     with st.expander("🔍 View Extracted Insights"):
                         st.markdown(info, unsafe_allow_html=True)
 
-                    if st.button("📤 Export Insights as PDF"):
+                    if st.button("📄 Export Insights as PDF"):
                         buffer = BytesIO()
                         c = canvas.Canvas(buffer, pagesize=letter)
                         textobject = c.beginText(40, 750)
@@ -162,21 +161,21 @@ elif menu == "📄 Upload & QA":
 elif menu == "📚 Citation Manager":
     st.subheader("📚 Citation Manager")
 
-    doc_id = st.text_input("Enter Document ID", value=st.session_state.doc_ids[0] if st.session_state.doc_ids else "")
+    selected_title = st.text_input("Enter document title (first 5 words):")
     style = st.selectbox("Citation Style", ["APA", "BibTeX", "Chicago", "Harvard"])
 
     if st.button("Generate Citations"):
         with st.spinner("Formatting citations..."):
             try:
                 res = requests.post(f"{BASE_URL}/citations/", data={
-                    "doc_id": doc_id,
+                    "title": selected_title,
                     "style": style
                 })
                 citations = res.json().get("citations")
-                st.markdown("### 📄 Formatted Citations")
+                st.markdown("### 📜 Formatted Citations")
                 st.code(citations, language="text")
 
-                if citations and st.button("📤 Export Citations as .txt"):
+                if citations and st.button("📄 Export Citations as .txt"):
                     citation_txt = BytesIO(citations.encode("utf-8"))
                     st.download_button("⬇️ Download Citations", data=citation_txt, file_name="citations.txt", mime="text/plain")
             except Exception as e:
