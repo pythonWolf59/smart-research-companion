@@ -139,6 +139,7 @@ elif menu == "📄 Upload & QA":
                 try:
                     res = requests.get(f"{BASE_URL}/extract/", params={"title": st.session_state.selected_title})
                     info = res.json().get("extracted_info", "No insights found.")
+                    print(res.json())
                     with st.expander("🔍 View Extracted Insights"):
                         st.markdown(info, unsafe_allow_html=True)
 
