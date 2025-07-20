@@ -25,6 +25,7 @@ def extract_insights(doc_title: str):
 
     # ✅ Correctly join plain text chunks
     context = "\n".join([chunk['chunks'] for chunk in chunks])
+    print(context)
 
     prompt = f"""
 You are an expert academic assistant.
