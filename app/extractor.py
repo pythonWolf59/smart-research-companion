@@ -16,7 +16,7 @@ def enforce_markdown_structure(text):
 def extract_insights(doc_title: str):
     # Get top relevant chunks from this document
     try:
-        chunks = chroma.get_similar_chunks(query="research paper analysis", doc_title=doc_title, top_k=8)
+        chunks = chroma.get_similar_chunks(query="research paper analysis", title_slug=doc_title, n_results=8)
     except Exception as e:
         return {"extracted_info": f"Error retrieving chunks: {e}"}
 
