@@ -39,25 +39,25 @@ async def upload_multiple_pdfs(files: List[UploadFile] = File(...)):
     return {"doc_titles": titles, "message": f"{len(titles)} PDFs uploaded and indexed."}
 
 @app.post("/ask/")
-def question(doc_title: str = Form(...), question: str = Form(...)):
+def question(title: str = Form(...), question: str = Form(...)):
     try:
-        answer = ask_question(doc_title, question)
+        answer = ask_question(title, question)
         return {"answer": answer}
     except Exception as e:
         return {"error": str(e)}
 
 @app.get("/extract/")
-def extract(doc_title: str = Query(...)):
+def extract(title: str = Query(...)):
     try:
-        insights = extract_insights(doc_title)
+        insights = extract_insights(title)
         return insights
     except Exception as e:
         return {"error": str(e)}
 
 @app.post("/citations/")
-def get_citations(doc_title: str = Form(...), style: str = Form("APA")):
+def get_citations(title: str = Form(...), style: str = Form("APA")):
     try:
-        results = collection.get(where={"doc_title": doc_title})
+        results = collection.get(where={"doc_title": title})
         full_text = "\n".join(results['documents'])
         refs = extract_references(full_text)
         formatted = format_references(refs, style=style)
