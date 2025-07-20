@@ -13,19 +13,23 @@ def enforce_markdown_structure(text):
             text += f"\n{field}: \n"
     return text.strip()
 
-def extract_insights(doc_ids: list[str]):
-    # Get top relevant chunks from all selected documents
-    chunks = chroma.get_similar_chunks("research paper analysis", doc_tags=doc_ids)
-    
-    if not chunks:
-        return {"extracted_info": "No relevant content found in the selected documents."}
+def extract_insights(doc_title: str):
+    # Get top relevant chunks from this document
+    try:
+        chunks = chroma.get_similar_chunks(query="research paper analysis", doc_title=doc_title, top_k=8)
+    except Exception as e:
+        return {"extracted_info": f"Error retrieving chunks: {e}"}
 
-    context = "\n".join(chunks["chunks"])
+    if not chunks:
+        return {"extracted_info": "No relevant content found in the selected document."}
+
+    # Extract only the text from each chunk
+    context = "\n".join(chunk["text"] for chunk in chunks)
 
     prompt = f"""
 You are an expert academic assistant.
 
-Your task is to extract structured information from multiple research papers using the exact markdown format below:
+Your task is to extract structured information from a research paper using the exact markdown format below:
 
 ---
 ###**Title**:  
@@ -37,7 +41,7 @@ Your task is to extract structured information from multiple research papers usi
 ###**Gaps or Future Research Directions**:
 ---
 
-Below is a combined content sample from several research papers:
+Below is a combined content sample from the paper:
 
 \"\"\" 
 {context} 
@@ -46,8 +50,11 @@ Below is a combined content sample from several research papers:
 Now extract and summarize the required information as one coherent overview. Format it strictly using the markdown template above. End your response with: ### END
 """
 
-    response = mistral_api(prompt)
-    extracted = response.split("### END")[0].strip()
-    extracted = enforce_markdown_structure(extracted)
+    try:
+        response = mistral_api(prompt)
+        extracted = response.split("### END")[0].strip()
+        extracted = enforce_markdown_structure(extracted)
+    except Exception as e:
+        extracted = f"Error during model generation: {e}"
 
     return {"extracted_info": extracted}
