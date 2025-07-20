@@ -112,6 +112,7 @@ elif menu == "📄 Upload & QA":
                                 "question": user_query
                             })
                             answer = res.json().get("answer", "No response")
+                            print(res.json())
                             st.markdown(answer)
                             st.session_state.chat_history.append({"role": "assistant", "content": answer})
                         except Exception as e:
@@ -139,6 +140,7 @@ elif menu == "📄 Upload & QA":
                 try:
                     res = requests.get(f"{BASE_URL}/extract/", params={"title": st.session_state.selected_title})
                     info = res.json().get("extracted_info", "No insights found.")
+                    print(res.json())
                     with st.expander("🔍 View Extracted Insights"):
                         st.markdown(info, unsafe_allow_html=True)
 
