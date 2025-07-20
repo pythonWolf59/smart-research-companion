@@ -23,8 +23,8 @@ def extract_insights(doc_title: str):
     if not chunks:
         return {"extracted_info": "No relevant content found in the selected document."}
 
-    # Extract only the text from each chunk
-    context = "\n".join(chunk["text"] for chunk in chunks)
+    # ✅ Correctly join plain text chunks
+    context = "\n".join(chunks)
 
     prompt = f"""
 You are an expert academic assistant.
