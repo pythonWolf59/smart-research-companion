@@ -134,28 +134,31 @@ elif menu == "📄 Upload & QA":
                     buffer.seek(0)
                     st.download_button("⬇️ Download Chat PDF", data=buffer, file_name="chat_history.pdf", mime="application/pdf")
 
-        # 🧠 Insights Interface
         if st.session_state.show_insights:
             with st.spinner("Extracting insights..."):
                 try:
                     res = requests.get(f"{BASE_URL}/extract/", params={"title": st.session_state.selected_title})
-                    info = res.json().get("extracted_info", "No insights found.")
+                    json_data = res.json()
                     print(res.text)
-                    with st.expander("🔍 View Extracted Insights"):
-                        st.markdown(info, unsafe_allow_html=True)
+                    if "extracted_info" in json_data:
+                        info = json_data["extracted_info"]
+                        with st.expander("🔍 View Extracted Insights"):
+                            st.markdown(info, unsafe_allow_html=True)
 
-                    if st.button("📄 Export Insights as PDF"):
-                        buffer = BytesIO()
-                        c = canvas.Canvas(buffer, pagesize=letter)
-                        textobject = c.beginText(40, 750)
-                        textobject.setFont("Helvetica", 11)
-                        for line in info.split("\n"):
-                            textobject.textLine(line)
-                        c.drawText(textobject)
-                        c.showPage()
-                        c.save()
-                        buffer.seek(0)
-                        st.download_button("⬇️ Download Insights PDF", data=buffer, file_name="insights.pdf", mime="application/pdf")
+                        if st.button("📄 Export Insights as PDF"):
+                            buffer = BytesIO()
+                            c = canvas.Canvas(buffer, pagesize=letter)
+                            textobject = c.beginText(40, 750)
+                            textobject.setFont("Helvetica", 11)
+                            for line in info.split("\n"):
+                                textobject.textLine(line)
+                            c.drawText(textobject)
+                            c.showPage()
+                            c.save()
+                            buffer.seek(0)
+                            st.download_button("⬇️ Download Insights PDF", data=buffer, file_name="insights.pdf", mime="application/pdf")
+                    else:
+                        st.warning("No insights found in the response.")
                 except Exception as e:
                     st.error(f"Error: {e}")
 
