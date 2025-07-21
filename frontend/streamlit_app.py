@@ -10,8 +10,6 @@ st.set_page_config(page_title="Smart Research Assistant", layout="wide")
 # Initialize session state
 st.session_state.setdefault("doc_titles", [])
 st.session_state.setdefault("chat_history", [])
-st.session_state.setdefault("show_chat", False)
-st.session_state.setdefault("show_insights", False)
 st.session_state.setdefault("selected_title", "")
 
 # UI Layout
@@ -65,36 +63,29 @@ elif menu == "📄 Upload & QA":
     if uploaded_files and st.button("Upload"):
         with st.spinner("Uploading and indexing..."):
             try:
-                st.session_state.doc_titles.clear()
                 for file in uploaded_files:
                     files = {"file": (file.name, file, "application/pdf")}
                     res = requests.post(f"{BASE_URL}/upload/", files=files)
                     doc_title = res.json().get("doc_title")
-                    if doc_title:
+                    if doc_title and doc_title not in st.session_state.doc_titles:
                         st.session_state.doc_titles.append(doc_title)
                 st.session_state.chat_history.clear()
-                st.success(f"Uploaded {len(st.session_state.doc_titles)} PDF(s) successfully.")
+                st.success(f"Uploaded {len(uploaded_files)} PDF(s) successfully.")
             except Exception as e:
                 st.error(f"Error: {e}")
 
     if st.session_state.doc_titles:
-        st.session_state.selected_title = st.text_input(
-            "Enter the title (first 5 words used during chunking):",
-            value=st.session_state.selected_title
-        )
+        selected = st.selectbox("Select a document title:", st.session_state.doc_titles, index=0 if not st.session_state.selected_title else st.session_state.doc_titles.index(st.session_state.selected_title))
+        if selected != st.session_state.selected_title:
+            st.session_state.selected_title = selected
 
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            if st.button("💬 Ask Questions"):
-                st.session_state.show_chat = True
-        with col2:
-            if st.button("🧠 Extract Research Insights"):
-                st.session_state.show_insights = True
+        tab1, tab2 = st.tabs(["💬 Chat with AI", "🧠 Extract Insights"])
 
         # 💬 Chat Interface
-        if st.session_state.show_chat:
+        with tab1:
+            st.session_state.show_chat = True
+            st.session_state.show_insights = False
             st.markdown("#### 💬 Chat with the AI")
-
             for msg in st.session_state.chat_history:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
@@ -111,7 +102,6 @@ elif menu == "📄 Upload & QA":
                                 "title": st.session_state.selected_title,
                                 "question": user_query
                             })
-                            print(st.session_state.selected_title)
                             answer = res.json().get("answer", "No response")
                             st.markdown(answer)
                             st.session_state.chat_history.append({"role": "assistant", "content": answer})
@@ -134,12 +124,14 @@ elif menu == "📄 Upload & QA":
                     buffer.seek(0)
                     st.download_button("⬇️ Download Chat PDF", data=buffer, file_name="chat_history.pdf", mime="application/pdf")
 
-        if st.session_state.show_insights:
+        # 📄 Insights Interface
+        with tab2:
+            st.session_state.show_insights = True
+            st.session_state.show_chat = False
             with st.spinner("Extracting insights..."):
                 try:
                     res = requests.get(f"{BASE_URL}/extract/", params={"title": st.session_state.selected_title})
                     json_data = res.json()
-                    print(res.text)
                     if "extracted_info" in json_data:
                         info = json_data["extracted_info"]
                         with st.expander("🔍 View Extracted Insights"):
