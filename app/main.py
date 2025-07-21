@@ -2,6 +2,8 @@ from fastapi import FastAPI, File, UploadFile, Form, Query
 from typing import List, Union
 import os
 
+from fastapi.responses import JSONResponse
+
 from app.pdf_parser import parse_pdf
 from app.rag_qa import ask_question
 from app.extractor import extract_insights
@@ -68,3 +70,17 @@ def get_citations(title: str = Form(...), style: str = Form("APA")):
 @app.get("/search_papers/")
 def search_papers(query: str, max_results: int = 5):
     return search_all_sources(query, max_results)
+
+
+@app.get("/get_all_titles/")
+def get_all_titles():
+    try:
+        results = collection.get(include=["metadatas"])
+        metadatas = results["metadatas"]
+        print(type(metadatas))
+        # Extract and deduplicate doc_title
+        unique_titles = sorted(set(md["doc_title"] for md in metadatas if "doc_title" in md))
+
+        return JSONResponse(content={"titles": unique_titles}, status_code=200)
+    except Exception as e:
+        return {"error": str(e)}
