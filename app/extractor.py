@@ -14,19 +14,26 @@ def enforce_markdown_structure(text):
     return text.strip()
 
 def extract_insights(doc_title: str):
-    # Get top relevant chunks from this document
+    print(f"\n📄 Extracting insights for document title: {doc_title}")
+
     try:
-        chunks = chroma.get_similar_chunks(query="research paper analysis", title_slug=doc_title, n_results=8)
+        # Get relevant chunks from Chroma
+        chunks = chroma.get_similar_chunks(
+            query="research paper analysis",
+            title_slug=doc_title,
+            n_results=8
+        )
+        print(f"🔍 Chunks retrieved: {len(chunks)}")
+
+        context = "\n".join(chunks["chunks"])
+        
+        if not context.strip():
+            return {"extracted_info": "Retrieved chunks are empty or malformed."}
+
     except Exception as e:
-        return {"extracted_info": f"Error retrieving chunks: {e}"}
+        return {"extracted_info": f"❌ Error retrieving chunks: {e}"}
 
-    if not chunks:
-        return {"extracted_info": "No relevant content found in the selected document."}
-
-    # ✅ Correctly join plain text chunks
-    context = "\n".join([chunk['chunks'] for chunk in chunks])
-    print(context)
-
+    # Create LLM prompt
     prompt = f"""
 You are an expert academic assistant.
 
@@ -53,9 +60,17 @@ Now extract and summarize the required information as one coherent overview. For
 
     try:
         response = mistral_api(prompt)
+
+        if not isinstance(response, str):
+            raise ValueError("LLM response is not a string")
+
+        if "### END" not in response:
+            raise ValueError("LLM response missing '### END' delimiter")
+
         extracted = response.split("### END")[0].strip()
         extracted = enforce_markdown_structure(extracted)
+
     except Exception as e:
-        extracted = f"Error during model generation: {e}"
+        extracted = f"❌ Error during model generation: {e}"
 
     return {"extracted_info": extracted}
