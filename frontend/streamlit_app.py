@@ -111,6 +111,7 @@ elif menu == "📄 Upload & QA":
                                 "title": st.session_state.selected_title,
                                 "question": user_query
                             })
+                            print(st.session_state.selected_title)
                             answer = res.json().get("answer", "No response")
                             st.markdown(answer)
                             st.session_state.chat_history.append({"role": "assistant", "content": answer})
@@ -139,6 +140,7 @@ elif menu == "📄 Upload & QA":
                 try:
                     res = requests.get(f"{BASE_URL}/extract/", params={"title": st.session_state.selected_title})
                     info = res.json().get("extracted_info", "No insights found.")
+                    print(res.text)
                     with st.expander("🔍 View Extracted Insights"):
                         st.markdown(info, unsafe_allow_html=True)
 
