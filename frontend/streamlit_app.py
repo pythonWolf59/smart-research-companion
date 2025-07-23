@@ -242,17 +242,18 @@ def ask_question(title, question):
 
     try:
         with st.spinner("Getting response..."):
-            res = requests.post(url=f"{BASE_URL}/ask/", data={
-                                    "title": title,
-                                    "question": question
-                                })
+            json_data = json.dumps({
+                "title": title,
+                "question": question
+            })
+            res = requests.post(url=f"{BASE_URL}/ask/", data=json_data, headers={"Content-Type": "application/json"})
             res.raise_for_status()
             response_data = res.json()
             return response_data.get("answer", "No answer received.")
     except requests.exceptions.RequestException as e:
         st.error(f"Error asking question: {e}")
         # Log the full error for debugging
-        return f"Request details: Title='{title}', Question='{question}, Error='{e}'"
+        return f"Error='{e}'"
 
 def extract_insights(title):
     """Extracts insights from a selected paper."""
@@ -269,11 +270,12 @@ def extract_insights(title):
 def generate_citations(title, style):
     """Generates citations for a selected paper in a given style."""
     try:
+        json_data = json.dumps({
+            "title": title,
+            "style": style
+        })
         with st.spinner(f"Generating citations in {style} style..."):
-            res = requests.post(url=f"{BASE_URL}/citations/", data={
-                                    "title": title,
-                                    "style": style
-                                })
+            res = requests.post(url=f"{BASE_URL}/citations/", data=json_data, headers={"Content-Type": "application/json"})
             res.raise_for_status()
             citation_data = res.json()
             return citation_data.get("citations", "No citation generated.")
@@ -305,7 +307,7 @@ if st.session_state.page == 'Home':
             # The label is a single space to make the button visible for interaction,
             # but its content will be hidden by CSS.
             if st.button(
-                label=" ", # A single space as label
+                label="Proceed ", # A single space as label
                 key=f"home_card_button_{target_page}",
                 use_container_width=True # Make button fill its column
             ):
