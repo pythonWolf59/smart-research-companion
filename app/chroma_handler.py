@@ -21,35 +21,66 @@ class ChromaHandler:
     def __init__(self, collection):
         self.collection = collection
 
-    def _chunk_text(self, text, max_chunk_size=1000, overlap_size=200, max_total_bytes=16000):
-        sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    def _generate_chunks(self, text_segments_generator, max_chunk_size=1000, overlap_size=200, max_total_bytes=1000000): # Increased to 1MB (approx. 1,000,000 bytes)
+        """
+        Generates chunks from an iterable of text segments (e.g., pages from a PDF parser),
+        respecting chunk size, overlap, and total byte limits.
+        This avoids building the entire document text in memory.
+        """
         chunks = []
-        current_chunk = ""
-        total_bytes = 0
-        i = 0
+        current_chunk_buffer = ""
+        total_bytes_processed = 0
 
-        while i < len(sentences):
-            while i < len(sentences) and len(current_chunk) + len(sentences[i]) <= max_chunk_size:
-                current_chunk += sentences[i] + " "
-                i += 1
+        for segment in text_segments_generator:
+            sentences = re.split(r'(?<=[.!?])\s+', segment.strip())
+            
+            for sentence in sentences:
+                sentence_with_space = sentence + " "
+                
+                # Check if adding the current sentence would exceed max_chunk_size
+                if len(current_chunk_buffer) + len(sentence_with_space) > max_chunk_size:
+                    # If buffer is not empty, finalize it as a chunk
+                    if current_chunk_buffer.strip():
+                        chunk_to_add = current_chunk_buffer.strip()
+                        encoded_chunk = chunk_to_add.encode("utf-8")
 
-            chunk = current_chunk.strip()
-            encoded = chunk.encode("utf-8")
+                        # Check if adding this chunk would exceed the total byte limit
+                        if total_bytes_processed + len(encoded_chunk) > max_total_bytes:
+                            return chunks # Stop and return chunks collected so far
+                        
+                        chunks.append(chunk_to_add)
+                        total_bytes_processed += len(encoded_chunk)
 
-            if total_bytes + len(encoded) > max_total_bytes:
-                break
+                        # Prepare overlap for the next chunk
+                        # Take the last `overlap_size` characters from the added chunk
+                        overlap_text = chunk_to_add[-overlap_size:] if len(chunk_to_add) > overlap_size else chunk_to_add
+                        
+                        # Find the last space in the overlap to avoid cutting words in half
+                        last_space = overlap_text.rfind(' ')
+                        if last_space != -1:
+                            current_chunk_buffer = overlap_text[last_space+1:] # Start new buffer from after last space
+                        else:
+                            current_chunk_buffer = overlap_text # If no space, take whole overlap_text
+                        current_chunk_buffer += " " # Add space for next sentence
+                    else:
+                        # This case handles a single sentence larger than max_chunk_size.
+                        # We add it as its own chunk and reset the buffer.
+                        chunk_to_add = sentence.strip()
+                        encoded_chunk = chunk_to_add.encode("utf-8")
+                        if total_bytes_processed + len(encoded_chunk) > max_total_bytes:
+                            return chunks
+                        chunks.append(chunk_to_add)
+                        total_bytes_processed += len(encoded_chunk)
+                        current_chunk_buffer = "" # Reset buffer after adding large sentence
 
-            chunks.append(chunk)
-            total_bytes += len(encoded)
+                current_chunk_buffer += sentence_with_space
 
-            # Create overlap
-            overlap_tokens = chunk[-overlap_size:].split() if overlap_size else []
-            current_chunk = " ".join(overlap_tokens) + " " if overlap_tokens else ""
-
-        if current_chunk.strip():
-            encoded = current_chunk.strip().encode("utf-8")
-            if total_bytes + len(encoded) <= max_total_bytes:
-                chunks.append(current_chunk.strip())
+        # Add any remaining content in the buffer as a final chunk
+        if current_chunk_buffer.strip():
+            final_chunk = current_chunk_buffer.strip()
+            encoded_final = final_chunk.encode("utf-8")
+            if total_bytes_processed + len(encoded_final) <= max_total_bytes:
+                chunks.append(final_chunk)
 
         return chunks
 
@@ -60,19 +91,25 @@ class ChromaHandler:
         words = re.findall(r'\w+', title)[:5]
         return "_".join(words).lower()
 
-    def add_document(self, text: str, doc_tag: str, title: str):
+    def add_document(self, text_generator, doc_tag: str, title: str): # Accepts generator
+        """
+        Adds a document to the Chroma collection by processing text from a generator.
+        """
         title_slug = self._generate_title_slug(title)
         self.collection.delete(where={"doc_tag": doc_tag})
 
-        chunks = self._chunk_text(text)
+        # Pass the generator to _generate_chunks
+        chunks = self._generate_chunks(text_generator)
         if not chunks:
-            raise ValueError("Document too large or empty. No chunks generated.")
+            # Raise a more specific error for clarity
+            raise ValueError(f"Document '{title}' is too large or resulted in no valid chunks after processing. Max total bytes allowed: {self._generate_chunks.__defaults__[2]} bytes.")
 
         ids = [f"{title_slug}_chunk_{i}" for i in range(len(chunks))]
         metadata = [{"doc_tag": doc_tag, "doc_title": title_slug} for _ in chunks]
 
+        # Add documents to ChromaDB
         self.collection.add(documents=chunks, ids=ids, metadatas=metadata)
-        return title_slug  # return title for later use
+        return title_slug
 
     def get_similar_chunks(self, query, title_slug=None, n_results=5):
         where_filter = {"doc_title": title_slug} if title_slug else {}
@@ -85,3 +122,4 @@ class ChromaHandler:
     def delete_document(self, doc_tag):
         self.collection.delete(where={"doc_tag": doc_tag})
         return f"Deleted all chunks with tag: {doc_tag}"
+
