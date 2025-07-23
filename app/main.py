@@ -74,6 +74,7 @@ class CitationRequest(BaseModel):
 @app.post("/ask/")
 def question(request: AskRequest): 
     try:
+        print(f"Received request: {request}")
         answer = ask_question(request.title, request.question)
         return {"answer": answer}
     except Exception as e:
