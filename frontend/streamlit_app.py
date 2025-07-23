@@ -1,179 +1,562 @@
 import streamlit as st
 import requests
-from io import BytesIO
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
+import json
 
+# Base URL for the backend API
 BASE_URL = "https://smart-research-companion.onrender.com"
-st.set_page_config(page_title="Smart Research Assistant", layout="wide")
 
-# Initialize session state
-st.session_state.setdefault("doc_titles", [])
-st.session_state.setdefault("chat_history", [])
-st.session_state.setdefault("selected_title", "")
+# Set page configuration for a wider layout and title
+st.set_page_config(layout="wide", page_title="ScholarChat")
 
-# UI Layout
-st.markdown("<h1 style='text-align: center;'>🧠 Smart Research Assistant</h1>", unsafe_allow_html=True)
-st.markdown("---")
+# Custom CSS for styling to match the screenshots
+st.markdown("""
+<style>
+    .reportview-container .main .block-container {
+        padding-top: 2rem;
+        padding-right: 2rem;
+        padding-left: 2rem;
+        padding-bottom: 2rem;
+    }
+    .stApp {
+        background-color: #f8f0fc; /* Light purple background */
+    }
+    .sidebar .sidebar-content {
+        background-color: #e0d9ed; /* Slightly darker purple for sidebar */
+        padding-top: 20px;
+        border-radius: 10px;
+    }
+    .css-1d391kg { /* Streamlit's default sidebar padding */
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    .css-1lcbmhc { /* Sidebar navigation text color */
+        color: #4a217f;
+    }
+    .css-1lcbmhc:hover { /* Sidebar navigation hover color */
+        color: #6a3abf;
+    }
+    .css-1lcbmhc.st-selected { /* Selected sidebar item */
+        background-color: #c9bfe5;
+        border-radius: 5px;
+        color: #4a217f;
+    }
+    /* General button styling */
+    .stButton>button {
+        background-color: #6a3abf; /* Purple button */
+        color: white;
+        border-radius: 8px;
+        border: none;
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+    .stButton>button:hover {
+        background-color: #4a217f; /* Darker purple on hover */
+    }
+    .stTextInput>div>div>input {
+        border-radius: 8px;
+        border: 1px solid #c9bfe5;
+        padding: 10px;
+    }
+    .stTextArea>div>div>textarea {
+        border-radius: 8px;
+        border: 1px solid #c9bfe5;
+        padding: 10px;
+    }
+    .stFileUploader>div>div>button {
+        background-color: #6a3abf;
+        color: white;
+        border-radius: 8px;
+        border: none;
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+    .stFileUploader>div>div>button:hover {
+        background-color: #4a217f;
+    }
+    .stSelectbox>div>div>div {
+        border-radius: 8px;
+        border: 1px solid #c9bfe5;
+        padding: 5px 10px;
+    }
+    /* Styles for the clickable cards on the Home page */
+    .card-container {
+        position: relative; /* Needed for absolute positioning of the button */
+        background-color: white;
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        margin: 10px;
+        transition: transform 0.2s ease-in-out;
+        height: 180px; /* Fixed height for cards */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer; /* Indicate it's clickable */
+    }
+    .card-container:hover {
+        transform: translateY(-5px);
+    }
+    .card-icon {
+        font-size: 3em;
+        color: #6a3abf;
+        margin-bottom: 10px;
+    }
+    .card-title {
+        font-size: 1.2em;
+        font-weight: bold;
+        color: #4a217f;
+        margin-bottom: 5px;
+    }
+    .card-description {
+        font-size: 0.9em;
+        color: #555;
+    }
+    /* Style for the transparent overlay button */
+    /* This targets the specific button that overlays the card */
+    /* Adjusting selector to be more robust for Streamlit button elements */
+    .stColumn > div > div > div > button[data-testid="stButton"] {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0) !important; /* Make it transparent */
+        color: rgba(0,0,0,0) !important; /* Hide label text */
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        z-index: 10; /* Ensure it's on top of the card content */
+        cursor: pointer;
+    }
+    /* Ensure the parent column allows relative positioning for the button */
+    .stColumn {
+        position: relative;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        color: #4a217f;
+    }
+</style>
+""", unsafe_allow_html=True)
 
+# Initialize session state for navigation and data
+if 'page' not in st.session_state:
+    st.session_state.page = 'Home'
+if 'selected_title' not in st.session_state:
+    st.session_state.selected_title = None
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'all_titles' not in st.session_state:
+    st.session_state.all_titles = []
+if 'last_selected_chat_paper' not in st.session_state:
+    st.session_state.last_selected_chat_paper = None
+
+
+# --- Sidebar Navigation ---
 with st.sidebar:
-    menu = st.radio("Navigate", ["🏠 Home", "🔍 Search Papers", "📄 Upload & QA", "📚 Citation Manager"])
+    st.markdown("<h2 class='st-emotion-cache-10o49x4'>ScholarChat</h2>", unsafe_allow_html=True)
+    
+    page_options = ["Home", "Search Papers", "Chat with Paper", "Extract Insights", "Generate Citations"]
+    
+    try:
+        initial_page_index = page_options.index(st.session_state.page)
+    except ValueError:
+        initial_page_index = 0
 
-# ========== HOME ==========
-if menu == "🏠 Home":
-    st.subheader("Welcome!")
-    st.markdown("""
-    - Upload multiple research papers (PDF)
-    - Ask questions from all papers
-    - Extract research insights from all
-    - Search from multiple sources
-    - Generate citations in different styles
-    """)
+    selection = st.radio(
+        "Navigation",
+        page_options,
+        index=initial_page_index,
+        key="main_navigation"
+    )
+    
+    if selection != st.session_state.page:
+        st.session_state.page = selection
+        st.rerun()
 
-# ========== SEARCH ==========
-elif menu == "🔍 Search Papers":
-    st.subheader("🔍 Search Research Papers")
-    query = st.text_input("Enter your topic")
+# --- Functions for API Calls ---
 
-    if st.button("Search"):
-        with st.spinner("Searching..."):
-            try:
-                res = requests.get(f"{BASE_URL}/search_papers/", params={"query": query, "max_results": 10})
-                data = res.json()
-                st.success("Papers fetched successfully!")
+def fetch_all_titles():
+    """Fetches all document titles from the backend."""
+    try:
+        res = requests.get(f"{BASE_URL}/get_all_titles/")
+        res.raise_for_status()
+        response_data = res.json()
+        
+        extracted_titles = []
+        if isinstance(response_data, dict) and "titles" in response_data:
+            titles_from_response = response_data["titles"]
+            if isinstance(titles_from_response, list):
+                extracted_titles = titles_from_response
+            elif isinstance(titles_from_response, dict):
+                extracted_titles = list(titles_from_response.values())
+            else:
+                st.error("Backend response for 'titles' was not a list or dictionary as expected.")
+        else:
+            st.error("Backend response for titles was not in the expected format (missing 'titles' key or not a dict).")
+        
+        st.session_state.all_titles = extracted_titles
+        return response_data
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error fetching titles: {e}")
+        st.session_state.all_titles = []
+        return {}
 
-                for source, papers in data.items():
-                    if not papers:
-                        continue
-                    st.markdown(f"## 🔹 Source: {source.capitalize()}")
-                    for paper in papers:
-                        st.markdown(f"**{paper['title']}**")
-                        st.markdown(f"📜 *Summary:* {paper['summary'][:500]}...")
-                        st.markdown(f"[🔗 View]({paper['url']})", unsafe_allow_html=True)
-                        st.markdown("---")
-            except Exception as e:
-                st.error(f"Error: {e}")
+def search_papers(query, max_results=10):
+    """Searches for papers based on a query."""
+    try:
+        with st.spinner("Searching for papers..."):
+            res = requests.get(f"{BASE_URL}/search_papers/", params={"query": query, "max_results": max_results})
+            res.raise_for_status()
+            data = res.json()
+            return data
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error searching papers: {e}")
+        return {"arxiv": [], "semantic_scholar": [], "core": [], "pubmed": []} # Return expected structure
 
-# ========== UPLOAD & QA ==========
-elif menu == "📄 Upload & QA":
-    st.subheader("📄 Upload PDF(s) & Interact")
+def upload_paper(file):
+    """Uploads a paper to the backend."""
+    try:
+        files = {'file': (file.name, file.getvalue(), file.type)}
+        with st.spinner("Uploading paper..."):
+            res = requests.post(f"{BASE_URL}/upload/", files=files)
+            res.raise_for_status()
+            doc_title = res.json().get("doc_title")
+            st.success(f"Paper '{doc_title}' uploaded successfully!")
+            fetch_all_titles()
+            return doc_title
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error uploading paper: {e}")
+        return None
 
-    uploaded_files = st.file_uploader("Upload PDFs", type=["pdf"], accept_multiple_files=True)
+def ask_question(title, question):
+    """Asks a question about a selected paper."""
+    if not title or title == "Select a paper" or not question:
+        return "Please select a valid paper and enter a question."
 
-    if uploaded_files and st.button("Upload"):
-        with st.spinner("Uploading and indexing..."):
-            try:
-                for file in uploaded_files:
-                    files = {"file": (file.name, file, "application/pdf")}
-                    res = requests.post(f"{BASE_URL}/upload/", files=files)
-                    doc_title = res.json().get("doc_title")
-                    if doc_title and doc_title not in st.session_state.doc_titles:
-                        st.session_state.doc_titles.append(doc_title)
-                st.session_state.chat_history.clear()
-                st.success(f"Uploaded {len(uploaded_files)} PDF(s) successfully.")
-            except Exception as e:
-                st.error(f"Error: {e}")
+    try:
+        with st.spinner("Getting response..."):
+            res = requests.post(url=f"{BASE_URL}/ask/", data={
+                                    "title": title,
+                                    "question": question
+                                })
+            res.raise_for_status()
+            response_data = res.json()
+            return response_data.get("answer", "No answer received.")
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error asking question: {e}")
+        # Log the full error for debugging
+        st.error(f"Request details: Title='{title}', Question='{question}'")
+        return "An error occurred while getting the answer."
 
-    if st.session_state.doc_titles:
-        selected = st.selectbox("Select a document title:", st.session_state.doc_titles, index=0 if not st.session_state.selected_title else st.session_state.doc_titles.index(st.session_state.selected_title))
-        if selected != st.session_state.selected_title:
-            st.session_state.selected_title = selected
+def extract_insights(title):
+    """Extracts insights from a selected paper."""
+    try:
+        with st.spinner("Extracting insights..."):
+            res = requests.get(f"{BASE_URL}/extract/", params={"title": title})
+            res.raise_for_status()
+            json_data = res.json()
+            return json_data
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error extracting insights: {e}")
+        return {"extracted_info": "Error extracting summary."} # Return expected structure
 
-        tab1, tab2 = st.tabs(["💬 Chat with AI", "🧠 Extract Insights"])
+def generate_citations(title, style):
+    """Generates citations for a selected paper in a given style."""
+    try:
+        with st.spinner(f"Generating citations in {style} style..."):
+            res = requests.post(url=f"{BASE_URL}/citations/", data={
+                                    "title": title,
+                                    "style": style
+                                })
+            res.raise_for_status()
+            citation_data = res.json()
+            return citation_data.get("citations", "No citation generated.")
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error generating citations: {e}")
+        return "An error occurred while generating citations."
 
-        # 💬 Chat Interface
-        with tab1:
-            st.session_state.show_chat = True
-            st.session_state.show_insights = False
-            st.markdown("#### 💬 Chat with the AI")
-            for msg in st.session_state.chat_history:
-                with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
+# --- Page Content ---
 
-            user_query = st.chat_input("Ask something about the uploaded paper...")
-            if user_query:
-                st.session_state.chat_history.append({"role": "user", "content": user_query})
-                with st.chat_message("user"):
-                    st.markdown(user_query)
-                with st.chat_message("assistant"):
-                    with st.spinner("Thinking..."):
-                        try:
-                            res = requests.post(f"{BASE_URL}/ask/", data={
-                                "title": st.session_state.selected_title,
-                                "question": user_query
-                            })
-                            answer = res.json().get("answer", "No response")
-                            st.markdown(answer)
-                            st.session_state.chat_history.append({"role": "assistant", "content": answer})
-                        except Exception as e:
-                            st.error(f"Error: {e}")
+if st.session_state.page == 'Home':
+    st.title("Welcome to ScholarChat")
+    st.write("Your AI-powered research assistant.")
 
-            if st.session_state.chat_history:
-                if st.button("📅 Export Chat as PDF"):
-                    buffer = BytesIO()
-                    c = canvas.Canvas(buffer, pagesize=letter)
-                    textobject = c.beginText(40, 750)
-                    textobject.setFont("Helvetica", 11)
-                    for msg in st.session_state.chat_history:
-                        for line in f"{msg['role'].capitalize()}: {msg['content']}".split("\n"):
-                            textobject.textLine(line)
-                        textobject.textLine("")
-                    c.drawText(textobject)
-                    c.showPage()
-                    c.save()
-                    buffer.seek(0)
-                    st.download_button("⬇️ Download Chat PDF", data=buffer, file_name="chat_history.pdf", mime="application/pdf")
+    col1, col2, col3, col4 = st.columns(4)
 
-        # 📄 Insights Interface
-        with tab2:
-            st.session_state.show_insights = True
-            st.session_state.show_chat = False
-            with st.spinner("Extracting insights..."):
-                try:
-                    res = requests.get(f"{BASE_URL}/extract/", params={"title": st.session_state.selected_title})
-                    json_data = res.json()
-                    if "extracted_info" in json_data:
-                        info = json_data["extracted_info"]
-                        with st.expander("🔍 View Extracted Insights"):
-                            st.markdown(info, unsafe_allow_html=True)
+    # Function to create clickable cards for navigation
+    def create_navigation_card(col, icon, title, description, target_page):
+        with col:
+            # Display the card's visual content using st.markdown
+            st.markdown(f"""
+                <div class="card-container">
+                    <span class="card-icon">{icon}</span>
+                    <div class="card-title">{title}</div>
+                    <div class="card-description">{description}</div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            # Place a transparent Streamlit button over the card for click detection
+            # The label is a single space to make the button visible for interaction,
+            # but its content will be hidden by CSS.
+            if st.button(
+                label=" ", # A single space as label
+                key=f"home_card_button_{target_page}",
+                use_container_width=True # Make button fill its column
+            ):
+                st.session_state.page = target_page
+                st.rerun()
 
-                        if st.button("📄 Export Insights as PDF"):
-                            buffer = BytesIO()
-                            c = canvas.Canvas(buffer, pagesize=letter)
-                            textobject = c.beginText(40, 750)
-                            textobject.setFont("Helvetica", 11)
-                            for line in info.split("\n"):
-                                textobject.textLine(line)
-                            c.drawText(textobject)
-                            c.showPage()
-                            c.save()
-                            buffer.seek(0)
-                            st.download_button("⬇️ Download Insights PDF", data=buffer, file_name="insights.pdf", mime="application/pdf")
-                    else:
-                        st.warning("No insights found in the response.")
-                except Exception as e:
-                    st.error(f"Error: {e}")
+    create_navigation_card(col1, "🔍", "Search Papers", "Find academic papers from a vast database.", "Search Papers")
+    create_navigation_card(col2, "💬", "Chat with Paper", "Upload a paper and start a conversation with it.", "Chat with Paper")
+    create_navigation_card(col3, "💡", "Extract Insights", "Get key insights and summaries from research papers.", "Extract Insights")
+    create_navigation_card(col4, "‟", "Generate Citations", "Create citations in various formats for your bibliography.", "Generate Citations")
 
-# ========== CITATION MANAGER ==========
-elif menu == "📚 Citation Manager":
-    st.subheader("📚 Citation Manager")
 
-    selected_title = st.text_input("Enter document title (first 5 words):")
-    style = st.selectbox("Citation Style", ["APA", "BibTeX", "Chicago", "Harvard"])
+elif st.session_state.page == 'Search Papers':
+    st.title("Search Papers")
+    st.write("Discover academic papers. This is a demo and does not perform a real search.")
 
-    if st.button("Generate Citations"):
-        with st.spinner("Formatting citations..."):
-            try:
-                res = requests.post(f"{BASE_URL}/citations/", data={
-                    "title": selected_title,
-                    "style": style
-                })
-                citations = res.json().get("citations")
-                st.markdown("### 📜 Formatted Citations")
-                st.code(citations, language="text")
+    st.header("Paper Search")
+    st.write("Enter keywords to find relevant academic literature.")
 
-                if citations and st.button("📄 Export Citations as .txt"):
-                    citation_txt = BytesIO(citations.encode("utf-8"))
-                    st.download_button("⬇️ Download Citations", data=citation_txt, file_name="citations.txt", mime="text/plain")
-            except Exception as e:
-                st.error(f"Error: {e}")
+    search_query = st.text_input("e.g., 'machine learning in biology'", key="search_input")
+    if st.button("🔍 Search", key="search_button"):
+        if search_query:
+            results = search_papers(search_query)
+            if results:
+                st.subheader("Search Results:")
+                found_any_papers = False
+                for source, papers in results.items():
+                    if papers:
+                        st.markdown(f"### From {source.replace('_', ' ').title()}:")
+                        for i, paper in enumerate(papers):
+                            st.markdown(f"**{i+1}. {paper.get('title', 'N/A')}**")
+                            if paper.get('authors'):
+                                st.write(f"Authors: {paper['authors']}")
+                            if paper.get('year'):
+                                st.write(f"Year: {paper['year']}")
+                            if paper.get('summary'):
+                                st.write(f"Abstract: {paper['summary']}")
+                            elif paper.get('abstract'): # Sometimes abstract is used instead of summary
+                                st.write(f"Abstract: {paper['abstract']}")
+                            else:
+                                st.write("Abstract: N/A")
+
+                            if paper.get('url'):
+                                st.markdown(f"[Read Paper]({paper['url']})")
+                            st.markdown("---")
+                            found_any_papers = True
+                if not found_any_papers:
+                    st.info("No search results found for your query across all sources.")
+            else:
+                st.info("No search results found or an error occurred.")
+        else:
+            st.warning("Please enter a search query.")
+    else:
+        st.info("Search results will appear here...")
+
+
+elif st.session_state.page == 'Chat with Paper':
+    st.title("Chat with Paper")
+    st.write("Upload a paper or select an existing one to start a conversation.")
+
+    # Fetch titles when the page loads
+    if not st.session_state.all_titles:
+        fetch_all_titles()
+
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        uploaded_file = st.file_uploader("Upload Paper", type=["pdf", "txt"], key="chat_upload_file")
+        if uploaded_file is not None:
+            if st.button("Upload Selected Paper", key=f"process_upload_chat_{uploaded_file.name}"):
+                doc_title = upload_paper(uploaded_file)
+                if doc_title:
+                    st.session_state.selected_title = doc_title
+                    st.session_state.chat_history = [{"role": "bot", "content": f"Hello! Paper '{doc_title}' uploaded. How can I help you with it?"}]
+                    st.rerun()
+        else:
+            st.info("Select a file above, then click 'Upload Selected Paper'.")
+
+
+    with col2:
+        titles_for_dropdown = ["Select a paper"] + st.session_state.all_titles
+        
+        selected_title_index = 0
+        if st.session_state.selected_title and st.session_state.selected_title in titles_for_dropdown:
+            selected_title_index = titles_for_dropdown.index(st.session_state.selected_title)
+
+        current_selected_title_from_dropdown = st.selectbox(
+            "Select a paper",
+            titles_for_dropdown,
+            index=selected_title_index,
+            key="paper_select_chat"
+        )
+        
+        if current_selected_title_from_dropdown != st.session_state.selected_title:
+            st.session_state.selected_title = current_selected_title_from_dropdown
+            if st.session_state.selected_title != "Select a paper":
+                st.session_state.chat_history = [{"role": "bot", "content": f"You've selected '{st.session_state.selected_title}'. How can I help you with it?"}]
+            else:
+                st.session_state.chat_history = [{"role": "bot", "content": "Hello! Upload a paper or select one from the dropdown to start."}]
+            st.rerun()
+
+
+    chat_placeholder = st.container()
+    with chat_placeholder:
+        if not st.session_state.chat_history:
+            st.markdown("""
+                <div class="chat-message-container">
+                    <span class="chat-message-icon">🤖</span>
+                    <div class="chat-message-content">Hello! Upload a paper or select one from the dropdown to start.</div>
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            for chat_message in st.session_state.chat_history:
+                icon = "👤" if chat_message["role"] == "user" else "🤖"
+                st.markdown(f"""
+                    <div class="chat-message-container">
+                        <span class="chat-message-icon">{icon}</span>
+                        <div class="chat-message-content">{chat_message["content"]}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+    user_query = st.text_input("Ask a question...", key="user_chat_input")
+    if st.button("Send", key="send_chat_button"):
+        if user_query and st.session_state.selected_title and st.session_state.selected_title != "Select a paper":
+            st.session_state.chat_history.append({"role": "user", "content": user_query})
+            with chat_placeholder:
+                icon = "👤"
+                st.markdown(f"""
+                    <div class="chat-message-container">
+                        <span class="chat-message-icon">{icon}</span>
+                        <div class="chat-message-content">{user_query}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            answer = ask_question(st.session_state.selected_title, user_query)
+            st.session_state.chat_history.append({"role": "bot", "content": answer})
+            st.rerun()
+        elif not user_query:
+            st.warning("Please enter a question.")
+        else:
+            st.warning("Please select a paper first.")
+
+
+elif st.session_state.page == 'Extract Insights':
+    st.title("Extract Insights")
+    st.write("Upload a research paper to automatically extract key insights and a summary.")
+
+    st.header("Insight Extractor")
+    col1, col2 = st.columns([1, 2])
+
+    if not st.session_state.all_titles:
+        fetch_all_titles()
+
+    with col1:
+        uploaded_file = st.file_uploader("Choose File", type=["pdf", "txt"], key="extract_upload_file")
+        if uploaded_file is not None:
+            if st.button("Upload Selected Paper", key=f"process_upload_extract_{uploaded_file.name}"):
+                doc_title = upload_paper(uploaded_file)
+                if doc_title:
+                    st.session_state.selected_title = doc_title
+                    st.success(f"Paper '{doc_title}' uploaded. You can now extract insights.")
+                    st.rerun()
+        else:
+            st.info("Select a file above, then click 'Upload Selected Paper'.")
+
+    with col2:
+        titles_for_dropdown = st.session_state.all_titles
+        
+        selected_title_index = 0
+        if st.session_state.selected_title and st.session_state.selected_title in titles_for_dropdown:
+            selected_title_index = titles_for_dropdown.index(st.session_state.selected_title)
+
+        selected_title_extract = st.selectbox(
+            "Select a paper to extract insights from:",
+            titles_for_dropdown,
+            index=selected_title_index,
+            key="paper_select_extract"
+        )
+        if selected_title_extract != "Select a paper":
+            st.session_state.selected_title = selected_title_extract
+
+    insights_placeholder = st.empty()
+    insights_placeholder.info("Extracted insights will appear here...")
+
+    if st.button("💡 Extract", key="extract_button"):
+        if st.session_state.selected_title and st.session_state.selected_title != "Select a paper":
+            insights = extract_insights(st.session_state.selected_title)
+            with insights_placeholder.container():
+                if insights and "extracted_info" in insights:
+                    st.subheader("Extracted Insights:")
+                    st.markdown(insights["extracted_info"]) # Render Markdown content
+                else:
+                    st.info("No insights extracted or an error occurred.")
+        else:
+            insights_placeholder.warning("Please upload or select a paper to extract insights.")
+
+
+elif st.session_state.page == 'Generate Citations':
+    st.title("Generate Citations")
+    st.write("Upload a paper and select a style to generate a citation.")
+
+    st.header("Citation Generator")
+    col1, col2, col3 = st.columns([1, 1, 1])
+
+    if not st.session_state.all_titles:
+        fetch_all_titles()
+
+    with col1:
+        uploaded_file = st.file_uploader("Choose File", type=["pdf", "txt"], key="citations_upload_file")
+        if uploaded_file is not None:
+            if st.button("Upload Selected Paper", key=f"process_upload_citations_{uploaded_file.name}"):
+                doc_title = upload_paper(uploaded_file)
+                if doc_title:
+                    st.session_state.selected_title = doc_title
+                    st.success(f"Paper '{doc_title}' uploaded. You can now generate citations.")
+                    st.rerun()
+        else:
+            st.info("Select a file above, then click 'Upload Selected Paper'.")
+
+    with col2:
+        titles_for_dropdown = ["Select a paper"] + st.session_state.all_titles
+        
+        selected_title_index = 0
+        if st.session_state.selected_title and st.session_state.selected_title in titles_for_dropdown:
+            selected_title_index = titles_for_dropdown.index(st.session_state.selected_title)
+
+        selected_title_citation = st.selectbox(
+            "Select a paper:",
+            titles_for_dropdown,
+            index=selected_title_index,
+            key="paper_select_citation"
+        )
+        if selected_title_citation != "Select a paper":
+            st.session_state.selected_title = selected_title_citation
+
+    with col3:
+        citation_style = st.selectbox(
+            "Select Style",
+            ["APA", "MLA", "Chicago", "Harvard"], # Example styles
+            key="citation_style_select"
+        )
+
+    citation_placeholder = st.empty()
+    citation_placeholder.info("Generated citation will appear here...")
+
+    if st.button("‟ Generate", key="generate_citation_button"):
+        if st.session_state.selected_title and st.session_state.selected_title != "Select a paper" and citation_style:
+            citation_text = generate_citations(st.session_state.selected_title, citation_style)
+            with citation_placeholder.container():
+                st.subheader("Generated Citation:")
+                st.text_area("Citation:", value=citation_text, height=150, key="citation_output")
+        else:
+            citation_placeholder.warning("Please upload or select a paper and choose a citation style.")
+
