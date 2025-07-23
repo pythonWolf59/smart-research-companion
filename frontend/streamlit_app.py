@@ -252,8 +252,7 @@ def ask_question(title, question):
     except requests.exceptions.RequestException as e:
         st.error(f"Error asking question: {e}")
         # Log the full error for debugging
-        st.error(f"Request details: Title='{title}', Question='{question}'")
-        return "An error occurred while getting the answer."
+        return f"Request details: Title='{title}', Question='{question}, Error='{e}'"
 
 def extract_insights(title):
     """Extracts insights from a selected paper."""
