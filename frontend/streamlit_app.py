@@ -169,18 +169,24 @@ st.markdown("""
 # Initialize session state for navigation and data
 if 'page' not in st.session_state:
     st.session_state.page = 'Home'
-if 'selected_title' not in st.session_state:
-    st.session_state.selected_title = None
+if 'selected_uploaded_title' not in st.session_state: # Renamed for clarity
+    st.session_state.selected_uploaded_title = None
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'all_titles' not in st.session_state:
     st.session_state.all_titles = []
 if 'last_selected_chat_paper' not in st.session_state:
     st.session_state.last_selected_chat_paper = None
-if 'chat_mode' not in st.session_state: # New: Tracks if chat is with uploaded paper or URL
-    st.session_state.chat_mode = 'uploaded_paper' # 'uploaded_paper' or 'url_paper'
-if 'current_url_for_chat' not in st.session_state: # New: Stores the URL for URL-based chat
+
+# New: Tracks the active source type for chat
+if 'active_chat_source_type' not in st.session_state:
+    st.session_state.active_chat_source_type = 'none' # 'none', 'uploaded_paper', 'url_paper'
+
+if 'current_url_for_chat' not in st.session_state: # Stores the URL for URL-based chat
     st.session_state.current_url_for_chat = None
+
+if 'chat_display_title' not in st.session_state: # Title to display in chat header
+    st.session_state.chat_display_title = "No paper selected"
 
 
 # --- Sidebar Navigation ---
@@ -205,8 +211,10 @@ with st.sidebar:
         st.session_state.page = selection
         # Reset chat mode and URL when navigating away from Chat with Paper
         if st.session_state.page != 'Chat with Paper':
-            st.session_state.chat_mode = 'uploaded_paper'
+            st.session_state.active_chat_source_type = 'none'
             st.session_state.current_url_for_chat = None
+            st.session_state.selected_uploaded_title = None # Clear selected paper
+            st.session_state.chat_display_title = "No paper selected"
         st.rerun()
 
 # --- Functions for API Calls ---
@@ -440,65 +448,100 @@ elif st.session_state.page == 'Chat with Paper':
     col1, col2 = st.columns([1, 2])
 
     with col1:
-        st.subheader("Upload or Select Paper")
+        st.subheader("Upload Paper")
         uploaded_file = st.file_uploader("Upload Paper", type=["pdf", "txt"], key="chat_upload_file")
         if uploaded_file is not None:
             if st.button("Upload Selected Paper", key=f"process_upload_chat_{uploaded_file.name}"):
                 doc_title = upload_paper(uploaded_file)
                 if doc_title:
-                    st.session_state.selected_title = doc_title
+                    st.session_state.selected_uploaded_title = doc_title
+                    st.session_state.chat_display_title = doc_title # Set display title
                     st.session_state.chat_history = [{"role": "bot", "content": f"Hello! Paper '{doc_title}' uploaded. How can I help you with it?"}]
-                    st.session_state.chat_mode = 'uploaded_paper' # Set mode to uploaded paper
+                    st.session_state.active_chat_source_type = 'uploaded_paper' # Set mode
                     st.session_state.current_url_for_chat = None # Clear URL
                     st.rerun()
         else:
             st.info("Select a file above, then click 'Upload Selected Paper'.")
 
+        st.markdown("---")
+        st.subheader("Select Existing Paper")
         titles_for_dropdown = ["Select a paper"] + st.session_state.all_titles
         
+        # Determine the initial index for the selectbox based on current state
         selected_title_index = 0
-        if st.session_state.selected_title and st.session_state.selected_title in titles_for_dropdown:
-            selected_title_index = titles_for_dropdown.index(st.session_state.selected_title)
+        if st.session_state.active_chat_source_type == 'uploaded_paper' and st.session_state.selected_uploaded_title in titles_for_dropdown:
+            selected_title_index = titles_for_dropdown.index(st.session_state.selected_uploaded_title)
 
-        current_selected_title_from_dropdown = st.selectbox(
+        # Use a callback to handle selectbox changes to ensure state is set immediately
+        def on_selectbox_change():
+            selected_val = st.session_state.paper_select_chat_key
+            if selected_val != "Select a paper":
+                st.session_state.selected_uploaded_title = selected_val
+                st.session_state.chat_display_title = selected_val
+                st.session_state.chat_history = [{"role": "bot", "content": f"You've selected '{selected_val}'. How can I help you with it?"}]
+                st.session_state.active_chat_source_type = 'uploaded_paper'
+                st.session_state.current_url_for_chat = None
+            else:
+                # If "Select a paper" is chosen, reset to no active source
+                st.session_state.selected_uploaded_title = None
+                st.session_state.current_url_for_chat = None
+                st.session_state.active_chat_source_type = 'none'
+                st.session_state.chat_display_title = "No paper selected"
+                st.session_state.chat_history = [{"role": "bot", "content": "Hello! Upload a paper or select one from the dropdown to start."}]
+            st.rerun() # Rerun immediately after state change
+
+        st.selectbox(
             "Select an existing paper:",
             titles_for_dropdown,
             index=selected_title_index,
-            key="paper_select_chat"
+            key="paper_select_chat_key", # Use a unique key for the selectbox
+            on_change=on_selectbox_change # Assign the callback
         )
         
-        # Logic to handle dropdown selection changing the chat context
-        if current_selected_title_from_dropdown != st.session_state.selected_title:
-            st.session_state.selected_title = current_selected_title_from_dropdown
-            if st.session_state.selected_title != "Select a paper":
-                st.session_state.chat_history = [{"role": "bot", "content": f"You've selected '{st.session_state.selected_title}'. How can I help you with it?"}]
-                st.session_state.chat_mode = 'uploaded_paper' # Set mode to uploaded paper
-                st.session_state.current_url_for_chat = None # Clear URL
-            else:
-                st.session_state.chat_history = [{"role": "bot", "content": "Hello! Upload a paper or select one from the dropdown to start."}]
-                st.session_state.chat_mode = 'uploaded_paper' # Default mode
-                st.session_state.current_url_for_chat = None # Clear URL
-            st.rerun()
-
         st.markdown("---")
         st.subheader("Chat with URL")
-        url_input = st.text_input("Enter Document URL (PDF only):", key="chat_url_input")
+        # Ensure the URL input field retains its value if in URL mode
+        url_input_default_value = ""
+        if st.session_state.active_chat_source_type == 'url_paper' and st.session_state.current_url_for_chat:
+            url_input_default_value = st.session_state.current_url_for_chat
+
+        url_input = st.text_input("Enter Document URL (PDF only):", value=url_input_default_value, key="chat_url_input")
+        
         if st.button("Extract from URL", key="extract_from_url_chat_button"):
             if url_input:
+                
                 initial_summary = extract_from_url_backend(url_input)
-                if "Error:" not in initial_summary:
-                    st.session_state.selected_title = f"URL: {url_input}" # Indicate it's a URL
+                
+                if "Error:" not in initial_summary and initial_summary.strip(): # Check if not error AND not empty/whitespace
+                    st.session_state.selected_uploaded_title = None # Clear uploaded paper selection
                     st.session_state.current_url_for_chat = url_input # Store the actual URL
-                    st.session_state.chat_mode = 'url_paper' # Set chat mode to URL
+                    st.session_state.active_chat_source_type = 'url_paper' # Set chat mode to URL
+                    st.session_state.chat_display_title = f"URL: {url_input[:50]}..." if len(url_input) > 50 else f"URL: {url_input}" # Set display title
                     st.session_state.chat_history = [{"role": "bot", "content": f"Content from URL '{url_input}' extracted. Here's an initial summary:\n\n{initial_summary}"}]
+                    
                     st.rerun()
-                else:
+                elif "Error:" in initial_summary:
                     st.error(initial_summary) # Display error from backend
+                    st.session_state.chat_history = [{"role": "bot", "content": f"Error extracting from URL '{url_input}': {initial_summary}"}]
+                    st.session_state.active_chat_source_type = 'url_paper' # Still set mode to URL for consistency, but with error
+                    st.session_state.current_url_for_chat = url_input
+                    st.session_state.chat_display_title = f"URL Error: {url_input[:50]}..." if len(url_input) > 50 else f"URL Error: {url_input}"
+                    
+                    st.rerun() # Rerun to show the error in chat history
+                else:
+                    # If it's not an error, but it's empty or just whitespace
+                    st.warning(f"Successfully connected to URL, but no content was extracted or the summary was empty. Please check the URL or try a different document.")
+                    st.session_state.chat_history = [{"role": "bot", "content": f"Tried to extract from URL '{url_input}', but no content was found. Please ensure the URL is valid and points to a readable PDF."}]
+                    st.session_state.active_chat_source_type = 'url_paper' # Still set mode to URL, but with a warning
+                    st.session_state.current_url_for_chat = url_input
+                    st.session_state.chat_display_title = f"URL (No Content): {url_input[:50]}..." if len(url_input) > 50 else f"URL (No Content): {url_input}"
+                    
+                    st.rerun() # Rerun to show the warning in chat history
             else:
                 st.warning("Please enter a URL to extract content.")
         
     with col2:
-        st.subheader("Conversation")
+        st.subheader(f"Conversation with: {st.session_state.chat_display_title}") # Dynamic header
         chat_placeholder = st.container()
         with chat_placeholder:
             if not st.session_state.chat_history:
@@ -520,8 +563,10 @@ elif st.session_state.page == 'Chat with Paper':
 
         user_query = st.text_input("Ask a question...", key="user_chat_input")
         if st.button("Send", key="send_chat_button"):
+            
             if user_query:
-                if st.session_state.chat_mode == 'uploaded_paper' and st.session_state.selected_title and st.session_state.selected_title != "Select a paper":
+                # Check chat mode and dispatch question accordingly
+                if st.session_state.active_chat_source_type == 'uploaded_paper' and st.session_state.selected_uploaded_title and st.session_state.selected_uploaded_title != "Select a paper":
                     st.session_state.chat_history.append({"role": "user", "content": user_query})
                     with chat_placeholder:
                         icon = "👤"
@@ -531,10 +576,10 @@ elif st.session_state.page == 'Chat with Paper':
                                 <div class="chat-message-content">{user_query}</div>
                             </div>
                         """, unsafe_allow_html=True)
-                    answer = ask_question(st.session_state.selected_title, user_query)
+                    answer = ask_question(st.session_state.selected_uploaded_title, user_query)
                     st.session_state.chat_history.append({"role": "bot", "content": answer})
                     st.rerun()
-                elif st.session_state.chat_mode == 'url_paper' and st.session_state.current_url_for_chat:
+                elif st.session_state.active_chat_source_type == 'url_paper' and st.session_state.current_url_for_chat:
                     st.session_state.chat_history.append({"role": "user", "content": user_query})
                     with chat_placeholder:
                         icon = "👤"
@@ -548,7 +593,7 @@ elif st.session_state.page == 'Chat with Paper':
                     st.session_state.chat_history.append({"role": "bot", "content": answer})
                     st.rerun()
                 else:
-                    st.warning("Please upload/select a paper or extract content from a URL first.")
+                    st.warning("Please upload/select a paper or extract content from a URL first before asking a question.")
             else:
                 st.warning("Please enter a question.")
 
@@ -570,7 +615,7 @@ elif st.session_state.page == 'Extract Insights':
             if st.button("Upload Selected Paper", key=f"process_upload_extract_{uploaded_file.name}"):
                 doc_title = upload_paper(uploaded_file)
                 if doc_title:
-                    st.session_state.selected_title = doc_title
+                    st.session_state.selected_uploaded_title = doc_title # Changed to selected_uploaded_title
                     st.success(f"Paper '{doc_title}' uploaded. You can now extract insights.")
                     st.rerun()
         else:
@@ -579,8 +624,8 @@ elif st.session_state.page == 'Extract Insights':
         titles_for_dropdown = ["Select a paper"] + st.session_state.all_titles
         
         selected_title_index = 0
-        if st.session_state.selected_title and st.session_state.selected_title in titles_for_dropdown:
-            selected_title_index = titles_for_dropdown.index(st.session_state.selected_title)
+        if st.session_state.selected_uploaded_title and st.session_state.selected_uploaded_title in titles_for_dropdown: # Changed to selected_uploaded_title
+            selected_title_index = titles_for_dropdown.index(st.session_state.selected_uploaded_title)
 
         selected_title_extract = st.selectbox(
             "Select an existing paper to extract insights from:",
@@ -589,8 +634,8 @@ elif st.session_state.page == 'Extract Insights':
             key="paper_select_extract"
         )
         # Update session state if dropdown selection changes
-        if selected_title_extract != st.session_state.selected_title:
-            st.session_state.selected_title = selected_title_extract
+        if selected_title_extract != st.session_state.selected_uploaded_title: # Changed to selected_uploaded_title
+            st.session_state.selected_uploaded_title = selected_title_extract # Changed to selected_uploaded_title
             # No rerun here, as extraction is triggered by button click
 
         st.markdown("---")
@@ -613,8 +658,8 @@ elif st.session_state.page == 'Extract Insights':
         insights_placeholder.info("Extracted insights will appear here...")
 
         if st.button("💡 Extract Insights from Selected Paper", key="extract_button"):
-            if st.session_state.selected_title and st.session_state.selected_title != "Select a paper":
-                insights = extract_insights(st.session_state.selected_title)
+            if st.session_state.selected_uploaded_title and st.session_state.selected_uploaded_title != "Select a paper": # Changed to selected_uploaded_title
+                insights = extract_insights(st.session_state.selected_uploaded_title) # Changed to selected_uploaded_title
                 with insights_placeholder.container():
                     if insights and "extracted_info" in insights:
                         st.subheader("Extracted Insights from Paper:")
@@ -641,7 +686,7 @@ elif st.session_state.page == 'Generate Citations':
             if st.button("Upload Selected Paper", key=f"process_upload_citations_{uploaded_file.name}"):
                 doc_title = upload_paper(uploaded_file)
                 if doc_title:
-                    st.session_state.selected_title = doc_title
+                    st.session_state.selected_uploaded_title = doc_title # Changed to selected_uploaded_title
                     st.success(f"Paper '{doc_title}' uploaded. You can now generate citations.")
                     st.rerun()
         else:
@@ -651,8 +696,8 @@ elif st.session_state.page == 'Generate Citations':
         titles_for_dropdown = ["Select a paper"] + st.session_state.all_titles
         
         selected_title_index = 0
-        if st.session_state.selected_title and st.session_state.selected_title in titles_for_dropdown:
-            selected_title_index = titles_for_dropdown.index(st.session_state.selected_title)
+        if st.session_state.selected_uploaded_title and st.session_state.selected_uploaded_title in titles_for_dropdown: # Changed to selected_uploaded_title
+            selected_title_index = titles_for_dropdown.index(st.session_state.selected_uploaded_title)
 
         selected_title_citation = st.selectbox(
             "Select a paper:",
@@ -661,7 +706,7 @@ elif st.session_state.page == 'Generate Citations':
             key="paper_select_citation"
         )
         if selected_title_citation != "Select a paper":
-            st.session_state.selected_title = selected_title_citation
+            st.session_state.selected_uploaded_title = selected_title_citation # Changed to selected_uploaded_title
 
     with col3:
         citation_style = st.selectbox(
@@ -674,8 +719,8 @@ elif st.session_state.page == 'Generate Citations':
     citation_placeholder.info("Generated citation will appear here...")
 
     if st.button("‟ Generate", key="generate_citation_button"):
-        if st.session_state.selected_title and st.session_state.selected_title != "Select a paper" and citation_style:
-            citation_text = generate_citations(st.session_state.selected_title, citation_style)
+        if st.session_state.selected_uploaded_title and st.session_state.selected_uploaded_title != "Select a paper" and citation_style: # Changed to selected_uploaded_title
+            citation_text = generate_citations(st.session_state.selected_uploaded_title, citation_style) # Changed to selected_uploaded_title
             with citation_placeholder.container():
                 st.subheader("Generated Citation:")
                 st.text_area("Citation:", value=citation_text, height=150, key="citation_output")
