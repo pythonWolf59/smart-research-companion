@@ -3,6 +3,8 @@ import requests
 import json
 
 # Base URL for the backend API
+# IMPORTANT: For local testing, change this to "http://localhost:8000"
+# For deployment, keep it as your deployed backend URL.
 BASE_URL = "https://smart-research-companion.onrender.com"
 
 # Set page configuration for a wider layout and title
@@ -142,6 +144,25 @@ st.markdown("""
     h1, h2, h3, h4, h5, h6 {
         color: #4a217f;
     }
+    /* Chat message styling */
+    .chat-message-container {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 10px;
+        background-color: #ffffff; /* White background for chat bubbles */
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .chat-message-icon {
+        font-size: 1.5em;
+        margin-right: 10px;
+        flex-shrink: 0;
+    }
+    .chat-message-content {
+        flex-grow: 1;
+        color: #333;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -156,6 +177,10 @@ if 'all_titles' not in st.session_state:
     st.session_state.all_titles = []
 if 'last_selected_chat_paper' not in st.session_state:
     st.session_state.last_selected_chat_paper = None
+if 'chat_mode' not in st.session_state: # New: Tracks if chat is with uploaded paper or URL
+    st.session_state.chat_mode = 'uploaded_paper' # 'uploaded_paper' or 'url_paper'
+if 'current_url_for_chat' not in st.session_state: # New: Stores the URL for URL-based chat
+    st.session_state.current_url_for_chat = None
 
 
 # --- Sidebar Navigation ---
@@ -178,6 +203,10 @@ with st.sidebar:
     
     if selection != st.session_state.page:
         st.session_state.page = selection
+        # Reset chat mode and URL when navigating away from Chat with Paper
+        if st.session_state.page != 'Chat with Paper':
+            st.session_state.chat_mode = 'uploaded_paper'
+            st.session_state.current_url_for_chat = None
         st.rerun()
 
 # --- Functions for API Calls ---
@@ -236,7 +265,7 @@ def upload_paper(file):
         return None
 
 def ask_question(title, question):
-    """Asks a question about a selected paper."""
+    """Asks a question about a selected paper (uploaded)."""
     if not title or title == "Select a paper" or not question:
         return "Please select a valid paper and enter a question."
 
@@ -256,7 +285,7 @@ def ask_question(title, question):
         return f"Error='{e}'"
 
 def extract_insights(title):
-    """Extracts insights from a selected paper."""
+    """Extracts insights from a selected paper (uploaded)."""
     try:
         with st.spinner("Extracting insights..."):
             res = requests.get(f"{BASE_URL}/extract/", params={"title": title})
@@ -282,6 +311,42 @@ def generate_citations(title, style):
     except requests.exceptions.RequestException as e:
         st.error(f"Error generating citations: {e}")
         return "An error occurred while generating citations."
+
+# --- NEW API CALL FUNCTIONS FOR URL-BASED CONTENT ---
+
+def extract_from_url_backend(url: str):
+    """
+    Calls the backend to extract initial summary/insights from a document URL.
+    """
+    try:
+        with st.spinner("Extracting content from URL..."):
+            json_data = json.dumps({"url": url})
+            res = requests.post(url=f"{BASE_URL}/extract_from_url/", data=json_data, headers={"Content-Type": "application/json"})
+            res.raise_for_status()
+            response_data = res.json()
+            return response_data.get("summary", "No summary received from URL.")
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error extracting from URL: {e}")
+        return f"Error: Failed to extract content from URL. {e}"
+
+def ask_question_url_paper_backend(url: str, question: str):
+    """
+    Calls the backend to ask a question about a document at a given URL.
+    """
+    try:
+        with st.spinner("Getting response from URL content..."):
+            json_data = json.dumps({
+                "url": url,
+                "question": question
+            })
+            res = requests.post(url=f"{BASE_URL}/ask_url_paper/", data=json_data, headers={"Content-Type": "application/json"})
+            res.raise_for_status()
+            response_data = res.json()
+            return response_data.get("answer", "No answer received from URL.")
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error asking question about URL: {e}")
+        return f"Error: Failed to get answer for URL. {e}"
+
 
 # --- Page Content ---
 
@@ -315,8 +380,8 @@ if st.session_state.page == 'Home':
                 st.rerun()
 
     create_navigation_card(col1, "🔍", "Search Papers", "Find academic papers from a vast database.", "Search Papers")
-    create_navigation_card(col2, "💬", "Chat with Paper", "Upload a paper and start a conversation with it.", "Chat with Paper")
-    create_navigation_card(col3, "💡", "Extract Insights", "Get key insights and summaries from research papers.", "Extract Insights")
+    create_navigation_card(col2, "💬", "Chat with Paper", "Upload a paper or start a conversation with a URL.", "Chat with Paper")
+    create_navigation_card(col3, "💡", "Extract Insights", "Get key insights and summaries from research papers or URLs.", "Extract Insights")
     create_navigation_card(col4, "‟", "Generate Citations", "Create citations in various formats for your bibliography.", "Generate Citations")
 
 
@@ -366,7 +431,7 @@ elif st.session_state.page == 'Search Papers':
 
 elif st.session_state.page == 'Chat with Paper':
     st.title("Chat with Paper")
-    st.write("Upload a paper or select an existing one to start a conversation.")
+    st.write("Upload a paper, select an existing one, or provide a URL to start a conversation.")
 
     # Fetch titles when the page loads
     if not st.session_state.all_titles:
@@ -375,6 +440,7 @@ elif st.session_state.page == 'Chat with Paper':
     col1, col2 = st.columns([1, 2])
 
     with col1:
+        st.subheader("Upload or Select Paper")
         uploaded_file = st.file_uploader("Upload Paper", type=["pdf", "txt"], key="chat_upload_file")
         if uploaded_file is not None:
             if st.button("Upload Selected Paper", key=f"process_upload_chat_{uploaded_file.name}"):
@@ -382,12 +448,12 @@ elif st.session_state.page == 'Chat with Paper':
                 if doc_title:
                     st.session_state.selected_title = doc_title
                     st.session_state.chat_history = [{"role": "bot", "content": f"Hello! Paper '{doc_title}' uploaded. How can I help you with it?"}]
+                    st.session_state.chat_mode = 'uploaded_paper' # Set mode to uploaded paper
+                    st.session_state.current_url_for_chat = None # Clear URL
                     st.rerun()
         else:
             st.info("Select a file above, then click 'Upload Selected Paper'.")
 
-
-    with col2:
         titles_for_dropdown = ["Select a paper"] + st.session_state.all_titles
         
         selected_title_index = 0
@@ -395,64 +461,101 @@ elif st.session_state.page == 'Chat with Paper':
             selected_title_index = titles_for_dropdown.index(st.session_state.selected_title)
 
         current_selected_title_from_dropdown = st.selectbox(
-            "Select a paper",
+            "Select an existing paper:",
             titles_for_dropdown,
             index=selected_title_index,
             key="paper_select_chat"
         )
         
+        # Logic to handle dropdown selection changing the chat context
         if current_selected_title_from_dropdown != st.session_state.selected_title:
             st.session_state.selected_title = current_selected_title_from_dropdown
             if st.session_state.selected_title != "Select a paper":
                 st.session_state.chat_history = [{"role": "bot", "content": f"You've selected '{st.session_state.selected_title}'. How can I help you with it?"}]
+                st.session_state.chat_mode = 'uploaded_paper' # Set mode to uploaded paper
+                st.session_state.current_url_for_chat = None # Clear URL
             else:
                 st.session_state.chat_history = [{"role": "bot", "content": "Hello! Upload a paper or select one from the dropdown to start."}]
+                st.session_state.chat_mode = 'uploaded_paper' # Default mode
+                st.session_state.current_url_for_chat = None # Clear URL
             st.rerun()
 
-
-    chat_placeholder = st.container()
-    with chat_placeholder:
-        if not st.session_state.chat_history:
-            st.markdown("""
-                <div class="chat-message-container">
-                    <span class="chat-message-icon">🤖</span>
-                    <div class="chat-message-content">Hello! Upload a paper or select one from the dropdown to start.</div>
-                </div>
-            """, unsafe_allow_html=True)
-        else:
-            for chat_message in st.session_state.chat_history:
-                icon = "👤" if chat_message["role"] == "user" else "🤖"
-                st.markdown(f"""
+        st.markdown("---")
+        st.subheader("Chat with URL")
+        url_input = st.text_input("Enter Document URL (PDF only):", key="chat_url_input")
+        if st.button("Extract from URL", key="extract_from_url_chat_button"):
+            if url_input:
+                initial_summary = extract_from_url_backend(url_input)
+                if "Error:" not in initial_summary:
+                    st.session_state.selected_title = f"URL: {url_input}" # Indicate it's a URL
+                    st.session_state.current_url_for_chat = url_input # Store the actual URL
+                    st.session_state.chat_mode = 'url_paper' # Set chat mode to URL
+                    st.session_state.chat_history = [{"role": "bot", "content": f"Content from URL '{url_input}' extracted. Here's an initial summary:\n\n{initial_summary}"}]
+                    st.rerun()
+                else:
+                    st.error(initial_summary) # Display error from backend
+            else:
+                st.warning("Please enter a URL to extract content.")
+        
+    with col2:
+        st.subheader("Conversation")
+        chat_placeholder = st.container()
+        with chat_placeholder:
+            if not st.session_state.chat_history:
+                st.markdown("""
                     <div class="chat-message-container">
-                        <span class="chat-message-icon">{icon}</span>
-                        <div class="chat-message-content">{chat_message["content"]}</div>
+                        <span class="chat-message-icon">🤖</span>
+                        <div class="chat-message-content">Hello! Upload a paper, select one from the dropdown, or enter a URL to start.</div>
                     </div>
                 """, unsafe_allow_html=True)
+            else:
+                for chat_message in st.session_state.chat_history:
+                    icon = "👤" if chat_message["role"] == "user" else "🤖"
+                    st.markdown(f"""
+                        <div class="chat-message-container">
+                            <span class="chat-message-icon">{icon}</span>
+                            <div class="chat-message-content">{chat_message["content"]}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
 
-    user_query = st.text_input("Ask a question...", key="user_chat_input")
-    if st.button("Send", key="send_chat_button"):
-        if user_query and st.session_state.selected_title and st.session_state.selected_title != "Select a paper":
-            st.session_state.chat_history.append({"role": "user", "content": user_query})
-            with chat_placeholder:
-                icon = "👤"
-                st.markdown(f"""
-                    <div class="chat-message-container">
-                        <span class="chat-message-icon">{icon}</span>
-                        <div class="chat-message-content">{user_query}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            answer = ask_question(st.session_state.selected_title, user_query)
-            st.session_state.chat_history.append({"role": "bot", "content": answer})
-            st.rerun()
-        elif not user_query:
-            st.warning("Please enter a question.")
-        else:
-            st.warning("Please select a paper first.")
+        user_query = st.text_input("Ask a question...", key="user_chat_input")
+        if st.button("Send", key="send_chat_button"):
+            if user_query:
+                if st.session_state.chat_mode == 'uploaded_paper' and st.session_state.selected_title and st.session_state.selected_title != "Select a paper":
+                    st.session_state.chat_history.append({"role": "user", "content": user_query})
+                    with chat_placeholder:
+                        icon = "👤"
+                        st.markdown(f"""
+                            <div class="chat-message-container">
+                                <span class="chat-message-icon">{icon}</span>
+                                <div class="chat-message-content">{user_query}</div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    answer = ask_question(st.session_state.selected_title, user_query)
+                    st.session_state.chat_history.append({"role": "bot", "content": answer})
+                    st.rerun()
+                elif st.session_state.chat_mode == 'url_paper' and st.session_state.current_url_for_chat:
+                    st.session_state.chat_history.append({"role": "user", "content": user_query})
+                    with chat_placeholder:
+                        icon = "👤"
+                        st.markdown(f"""
+                            <div class="chat-message-container">
+                                <span class="chat-message-icon">{icon}</span>
+                                <div class="chat-message-content">{user_query}</div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    answer = ask_question_url_paper_backend(st.session_state.current_url_for_chat, user_query)
+                    st.session_state.chat_history.append({"role": "bot", "content": answer})
+                    st.rerun()
+                else:
+                    st.warning("Please upload/select a paper or extract content from a URL first.")
+            else:
+                st.warning("Please enter a question.")
 
 
 elif st.session_state.page == 'Extract Insights':
     st.title("Extract Insights")
-    st.write("Upload a research paper to automatically extract key insights and a summary.")
+    st.write("Upload a research paper, select an existing one, or provide a URL to automatically extract key insights and a summary.")
 
     st.header("Insight Extractor")
     col1, col2 = st.columns([1, 2])
@@ -461,6 +564,7 @@ elif st.session_state.page == 'Extract Insights':
         fetch_all_titles()
 
     with col1:
+        st.subheader("Upload or Select Paper")
         uploaded_file = st.file_uploader("Choose File", type=["pdf", "txt"], key="extract_upload_file")
         if uploaded_file is not None:
             if st.button("Upload Selected Paper", key=f"process_upload_extract_{uploaded_file.name}"):
@@ -472,36 +576,53 @@ elif st.session_state.page == 'Extract Insights':
         else:
             st.info("Select a file above, then click 'Upload Selected Paper'.")
 
-    with col2:
-        titles_for_dropdown = st.session_state.all_titles
+        titles_for_dropdown = ["Select a paper"] + st.session_state.all_titles
         
         selected_title_index = 0
         if st.session_state.selected_title and st.session_state.selected_title in titles_for_dropdown:
             selected_title_index = titles_for_dropdown.index(st.session_state.selected_title)
 
         selected_title_extract = st.selectbox(
-            "Select a paper to extract insights from:",
+            "Select an existing paper to extract insights from:",
             titles_for_dropdown,
             index=selected_title_index,
             key="paper_select_extract"
         )
-        if selected_title_extract != "Select a paper":
+        # Update session state if dropdown selection changes
+        if selected_title_extract != st.session_state.selected_title:
             st.session_state.selected_title = selected_title_extract
+            # No rerun here, as extraction is triggered by button click
 
-    insights_placeholder = st.empty()
-    insights_placeholder.info("Extracted insights will appear here...")
+        st.markdown("---")
+        st.subheader("Extract from URL")
+        url_input_extract = st.text_input("Enter Document URL (PDF only):", key="extract_url_input")
+        if st.button("Extract Summary from URL", key="extract_from_url_extract_button"):
+            if url_input_extract:
+                summary_from_url = extract_from_url_backend(url_input_extract)
+                with col2: # Display in the main content area
+                    if "Error:" not in summary_from_url:
+                        st.subheader("Extracted Summary from URL:")
+                        st.markdown(summary_from_url)
+                    else:
+                        st.error(summary_from_url)
+            else:
+                st.warning("Please enter a URL to extract content.")
 
-    if st.button("💡 Extract", key="extract_button"):
-        if st.session_state.selected_title and st.session_state.selected_title != "Select a paper":
-            insights = extract_insights(st.session_state.selected_title)
-            with insights_placeholder.container():
-                if insights and "extracted_info" in insights:
-                    st.subheader("Extracted Insights:")
-                    st.markdown(insights["extracted_info"]) # Render Markdown content
-                else:
-                    st.info("No insights extracted or an error occurred.")
-        else:
-            insights_placeholder.warning("Please upload or select a paper to extract insights.")
+    with col2:
+        insights_placeholder = st.empty()
+        insights_placeholder.info("Extracted insights will appear here...")
+
+        if st.button("💡 Extract Insights from Selected Paper", key="extract_button"):
+            if st.session_state.selected_title and st.session_state.selected_title != "Select a paper":
+                insights = extract_insights(st.session_state.selected_title)
+                with insights_placeholder.container():
+                    if insights and "extracted_info" in insights:
+                        st.subheader("Extracted Insights from Paper:")
+                        st.markdown(insights["extracted_info"]) # Render Markdown content
+                    else:
+                        st.info("No insights extracted or an error occurred.")
+            else:
+                insights_placeholder.warning("Please upload or select a paper (or use the URL option) to extract insights.")
 
 
 elif st.session_state.page == 'Generate Citations':
