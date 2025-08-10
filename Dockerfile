@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 # Install any OS-level dependencies your Python packages need
-RUN apt-get update && apt-get install -y gcc numpy libpq-dev libjpeg-dev zlib1g-dev \
+RUN apt-get update && apt-get install -y gcc numpy scipy libpq-dev libjpeg-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
