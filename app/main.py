@@ -1,4 +1,4 @@
-# main.py (Updated with new extract_insights logic)
+# main.py (Fixed)
 
 from fastapi import FastAPI, File, UploadFile, Query, HTTPException
 from typing import List, Union
@@ -7,9 +7,7 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 import logging
 import uuid
-import requests
-import json
-import numpy as np
+import psycopg2
 
 # Configure logging for the FastAPI app
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -21,11 +19,11 @@ from app.citation_manager import format_references, extract_references
 from app.paper_search import search_all_sources
 from app.extract_from_url import extract_initial_summary_from_url, ask_question_from_url
 from app.pgvector_handler import PGVectorHandler
-from app.startup import mistral_api  # Now also import the API function for insights
-
+from app.startup import mistral_api as startup_mistral_api # Renamed to avoid conflicts
+from dotenv import load_dotenv
 app = FastAPI(title="Scholar Chat AI")
 
-
+load_dotenv()
 # --- Helper Functions for Database and API Interaction ---
 
 def get_db_handler():
@@ -81,9 +79,8 @@ Paper text:
 Output:
 """
     try:
-        response = mistral_api(prompt)
-        # Assuming the API returns a clean JSON string
-        return response
+        response = startup_mistral_api(prompt)
+        return {"extracted_info": response}
     except Exception as e:
         logging.error(f"Error extracting insights from Mistral API: {e}")
         return {"extracted_info": "Failed to extract insights."}
@@ -106,7 +103,22 @@ class UrlRequest(BaseModel):
 
 
 # --- Re-implemented Endpoints ---
-
+@app.get("/test_db/")
+def test_db():
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST"),  # replace with your writer endpoint
+            port=5432,
+            user="postgres",                # or your DB user
+            password=os.getenv("DB_PASSWORD"),       # same as in Secrets Manager
+        )
+        cur = conn.cursor()
+        cur.execute("SELECT NOW();")
+        result = cur.fetchone()
+        conn.close()
+        return {"status": "success", "time": str(result)}
+    except Exception as e:
+        return {"status": "error", "details": str(e)}
 @app.post("/upload/")
 async def upload_paper(file: UploadFile = File(...)):
     try:
@@ -191,14 +203,11 @@ def extract(title: str = Query(...)):
     """
     try:
         logging.info(f"Received extract insights request for title: {title}")
-
-        # Call the function to get the raw response from Mistral AI
         raw_response = extract_insights(title)
-
         return raw_response
-
     except Exception as e:
         logging.error(f"Error extracting insights for title '{title}': {e}", exc_info=True)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
 @app.get("/get_all_titles/")
