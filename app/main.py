@@ -23,7 +23,7 @@ from app.extract_from_url import extract_initial_summary_from_url, ask_question_
 from app.pgvector_handler import PGVectorHandler
 from app.startup import mistral_api  # Now also import the API function for insights
 
-app = FastAPI(title="Smart Research Assistant")
+app = FastAPI(title="Scholar Chat AI")
 
 
 # --- Helper Functions for Database and API Interaction ---
