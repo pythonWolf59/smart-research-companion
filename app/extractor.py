@@ -1,76 +1,30 @@
-from app.chroma_handler import ChromaHandler, collection
-from app.startup import mistral_api
+# extractor.py
 
-chroma = ChromaHandler(collection)
+import os
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-def enforce_markdown_structure(text):
-    required_fields = [
-        "**Title**", "**Abstract**", "**Research Objectives or Questions**",
-        "**Variables**", "**Constructs**", "**Relationships**", "**Gaps or Future Research Directions**"
-    ]
-    for field in required_fields:
-        if field not in text:
-            text += f"\n{field}: \n"
-    return text.strip()
+def extract_and_chunk_pdf(file_path):
+    """
+    Loads a PDF, splits its text into chunks, and returns them.
 
-def extract_insights(doc_title: str):
-    print(f"\n📄 Extracting insights for document title: {doc_title}")
+    Args:
+        file_path (str): The path to the PDF file.
 
-    try:
-        # Get relevant chunks from Chroma
-        chunks = chroma.get_similar_chunks(
-            query="research paper analysis",
-            title_slug=doc_title,
-            n_results=8
-        )
-        print(f"🔍 Chunks retrieved: {len(chunks)}")
+    Returns:
+        list: A list of text chunks.
+    """
+    print(f"Loading and processing PDF: {file_path}")
+    loader = PyPDFLoader(file_path)
+    pages = loader.load_and_split()
 
-        context = "\n".join(chunks["chunks"])
-        
-        if not context.strip():
-            return {"extracted_info": "Retrieved chunks are empty or malformed."}
-
-    except Exception as e:
-        return {"extracted_info": f"❌ Error retrieving chunks: {e}"}
-
-    # Create LLM prompt
-    prompt = f"""
-You are an expert academic assistant.
-
-Your task is to extract structured information from a research paper using the exact markdown format below:
-
----
-###**Title**:  
-###**Abstract**:  
-###**Research Objectives or Questions**:  
-###**Variables** (only if it’s quantitative):  
-###**Constructs** (only if it’s qualitative):  
-###**Relationships** (between variables or constructs):  
-###**Gaps or Future Research Directions**:
----
-
-Below is a combined content sample from the paper:
-
-\"\"\" 
-{context} 
-\"\"\"
-
-Now extract and summarize the required information as one coherent overview. Format it strictly using the markdown template above. End your response with: ### END
-"""
-
-    try:
-        response = mistral_api(prompt)
-
-        if not isinstance(response, str):
-            raise ValueError("LLM response is not a string")
-
-        if "### END" not in response:
-            raise ValueError("LLM response missing '### END' delimiter")
-
-        extracted = response.split("### END")[0].strip()
-        extracted = enforce_markdown_structure(extracted)
-
-    except Exception as e:
-        extracted = f"❌ Error during model generation: {e}"
-
-    return {"extracted_info": extracted}
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200,
+        length_function=len,
+        is_separator_regex=False,
+    )
+    chunks = text_splitter.split_documents(pages)
+    chunk_texts = [chunk.page_content for chunk in chunks]
+    print(f"Split PDF into {len(chunk_texts)} chunks.")
+    return chunk_texts

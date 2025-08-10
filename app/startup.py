@@ -21,4 +21,5 @@ def mistral_api(prompt):
         },
     ]
     )
+
     return(chat_response.choices[0].message.content)
