@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # We need to disable telemetry to prevent the client from making a connection that could time out.
-settings = Settings(telemetry_disabled=True)
+settings = Settings(anonymized_telemetry=False)
 
 # Use the CloudClient to connect to your remote ChromaDB instance.
 # Ensure your environment variables (CHROMA_API_KEY, CHROMA_TENANT, CHROMA_DATABASE) are correctly set.
