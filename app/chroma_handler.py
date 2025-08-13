@@ -2,18 +2,20 @@ import hashlib
 import os
 import re
 
+# We will use an Ephemeral client for a free, simple, and truly in-memory solution.
+# This client stores all data in RAM and does not write to the disk.
+# This is ideal for serverless environments like App Runner where you
+# don't need data to persist between deployments.
 import chromadb
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-chroma_client = chromadb.CloudClient(
-    api_key=os.getenv("CHROMA_API_KEY"),
-    tenant=os.getenv("CHROMA_TENANT"),
-    database=os.getenv("CHROMA_DATABASE"),
-)
+# Use the EphemeralClient to prevent any filesystem permission issues.
+chroma_client = chromadb.EphemeralClient()
 
+# Get or create the collection for storing your papers.
 collection = chroma_client.get_or_create_collection("papers")
 
 
@@ -86,6 +88,4 @@ class ChromaHandler:
     def delete_document(self, doc_title):
         self.collection.delete(where={"doc_title": doc_title})
         return f"Deleted all chunks for document title: {doc_title}"
-
-
 
