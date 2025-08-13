@@ -1,5 +1,4 @@
-# main.py (Fixed)
-
+# main.py
 from fastapi import FastAPI, File, UploadFile, Query, HTTPException
 from typing import List, Union
 import os
@@ -12,33 +11,25 @@ import psycopg2
 # Configure logging for the FastAPI app
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Assuming these imports are correct and accessible
+# --- New Imports for ChromaDB and LangChain ---
+from app.chroma_handler import ChromaHandler
+from app.extractor import extract_and_chunk_text
 from app.pdf_parser import parse_pdf_pages_generator
 from app.rag_qa import ask_question, get_mistral_embedding
 from app.citation_manager import format_references, extract_references
 from app.paper_search import search_all_sources
 from app.extract_from_url import extract_initial_summary_from_url, ask_question_from_url
-from app.pgvector_handler import PGVectorHandler
-from app.startup import mistral_api as startup_mistral_api # Renamed to avoid conflicts
+from app.startup import mistral_api as startup_mistral_api  # Renamed to avoid conflicts
 from dotenv import load_dotenv
+
 app = FastAPI(title="Scholar Chat AI")
-
 load_dotenv()
-# --- Helper Functions for Database and API Interaction ---
 
-def get_db_handler():
-    """
-    Creates and returns a new PGVectorHandler instance.
-    """
-    db_host = os.getenv("DB_HOST")
-    db_user = os.getenv("DB_USER")
-    db_password = os.getenv("DB_PASSWORD")
+# Initialize ChromaHandler globally
+chroma_handler = ChromaHandler()
 
-    if not all([db_host, db_user, db_password]):
-        raise HTTPException(status_code=500, detail="Database credentials are not set in environment variables.")
 
-    return PGVectorHandler(db_host=db_host, db_user=db_user, db_password=db_password)
-
+# --- Helper Functions (Updated) ---
 
 def extract_title(file: UploadFile) -> str:
     filename = os.path.splitext(file.filename)[0]
@@ -47,16 +38,12 @@ def extract_title(file: UploadFile) -> str:
 
 def get_full_document_text(title: str) -> str:
     """
-    Retrieves the full text of a document from the database.
+    Retrieves the full text of a document from the database using ChromaHandler.
     """
-    db_handler = get_db_handler()
-    doc_id = db_handler.get_document_id_by_title(title)
-    if not doc_id:
-        db_handler.close()
+    full_text_chunks = chroma_handler.get_all_chunks_for_document(title)
+    if not full_text_chunks:
         raise HTTPException(status_code=404, detail=f"Document with title '{title}' not found.")
 
-    full_text_chunks = db_handler.get_all_chunks_for_document(doc_id)
-    db_handler.close()
     return "\n".join(full_text_chunks)
 
 
@@ -102,41 +89,25 @@ class UrlRequest(BaseModel):
     question: Union[str, None] = None
 
 
-# --- Re-implemented Endpoints ---
-@app.get("/test_db/")
-def test_db():
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv("DB_HOST"),  # replace with your writer endpoint
-            port=5432,
-            user="postgres",                # or your DB user
-            password=os.getenv("DB_PASSWORD"),       # same as in Secrets Manager
-        )
-        cur = conn.cursor()
-        cur.execute("SELECT NOW();")
-        result = cur.fetchone()
-        conn.close()
-        return {"status": "success", "time": str(result)}
-    except Exception as e:
-        return {"status": "error", "details": str(e)}
+# --- Re-implemented Endpoints (Updated) ---
 @app.post("/upload/")
 async def upload_paper(file: UploadFile = File(...)):
     try:
-        db_handler = get_db_handler()
-
         contents = await file.read()
         title = extract_title(file)
-        doc_tag = str(uuid.uuid4())
 
-        doc_id = db_handler.add_document_metadata(doc_tag, title)
-
+        # Use a generator to parse the PDF, then chunk the text with LangChain.
         text_generator = parse_pdf_pages_generator(contents)
-        chunk_texts = [page_text for page_text in text_generator]
+        chunks = extract_and_chunk_text(text_generator)
 
-        embeddings = [get_mistral_embedding(text) for text in chunk_texts]
+        if not chunks:
+            raise HTTPException(status_code=400, detail="Document could not be chunked or is empty.")
 
-        db_handler.add_chunks_with_embeddings(chunk_texts, embeddings, doc_id)
-        db_handler.close()
+        # Get embeddings for all chunks from Mistral
+        embeddings = [get_mistral_embedding(text) for text in chunks]
+
+        # Add the chunks and embeddings to ChromaDB
+        chroma_handler.add_chunks_with_embeddings_to_chroma(chunks, embeddings, title)
 
         return {"doc_title": title, "message": "PDF uploaded and indexed."}
     except Exception as e:
@@ -147,24 +118,31 @@ async def upload_paper(file: UploadFile = File(...)):
 @app.post("/upload_multiple/")
 async def upload_multiple_pdfs(files: List[UploadFile] = File(...)):
     titles = []
-    db_handler = get_db_handler()
     for file in files:
         try:
             contents = await file.read()
             title = extract_title(file)
-            doc_tag = str(uuid.uuid4())
 
-            doc_id = db_handler.add_document_metadata(doc_tag, title)
-
+            # Use a generator to parse the PDF, then chunk the text with LangChain.
             text_generator = parse_pdf_pages_generator(contents)
-            chunk_texts = [page_text for page_text in text_generator]
-            embeddings = [get_mistral_embedding(text) for text in chunk_texts]
-            db_handler.add_chunks_with_embeddings(chunk_texts, embeddings, doc_id)
+            chunks = extract_and_chunk_text(text_generator)
+
+            if not chunks:
+                logging.error(f"Error processing {file.filename}: Document could not be chunked or is empty.")
+                titles.append(f"Error processing {file.filename}: Document could not be chunked or is empty.")
+                continue
+
+            # Get embeddings for all chunks from Mistral
+            embeddings = [get_mistral_embedding(text) for text in chunks]
+
+            # Add the chunks and embeddings to ChromaDB
+            chroma_handler.add_chunks_with_embeddings_to_chroma(chunks, embeddings, title)
+
             titles.append(title)
         except Exception as e:
             titles.append(f"Error processing {file.filename}: {e}")
             logging.error(f"Error processing {file.filename}: {e}", exc_info=True)
-    db_handler.close()
+
     return {"doc_titles": titles, "message": f"{len(titles)} PDFs uploaded and indexed. Some may have failed."}
 
 
@@ -172,24 +150,23 @@ async def upload_multiple_pdfs(files: List[UploadFile] = File(...)):
 def question(request: AskRequest):
     try:
         logging.info(f"Received question request for title '{request.title}': {request.question}")
-        db_handler = get_db_handler()
 
-        doc_id = db_handler.get_document_id_by_title(request.title)
-        if not doc_id:
-            db_handler.close()
-            raise HTTPException(status_code=404, detail=f"Document with title '{request.title}' not found.")
-
+        # Generate embedding for the query
         query_embedding = get_mistral_embedding(request.question)
         if not query_embedding:
-            db_handler.close()
             raise HTTPException(status_code=500, detail="Failed to generate embedding for the query.")
 
-        context_chunks = db_handler.search_similar_chunks(query_embedding, doc_id=doc_id)
-        db_handler.close()
+        # Search for similar chunks in ChromaDB
+        context_chunks = chroma_handler.get_similar_chunks(query_embedding, doc_title=request.title)
+
+        if not context_chunks:
+            return JSONResponse(
+                content={"answer": f"No relevant information found for the question in document '{request.title}'."},
+                status_code=200)
 
         context_string = "\n".join(context_chunks)
-
         answer = ask_question(context_string, request.question)
+
         return {"answer": answer}
     except Exception as e:
         logging.error(f"Error asking question for title '{request.title}': {e}", exc_info=True)
@@ -214,9 +191,7 @@ def extract(title: str = Query(...)):
 def get_all_titles():
     try:
         logging.info("Received request to get all document titles.")
-        db_handler = get_db_handler()
-        titles = db_handler.get_all_document_titles()
-        db_handler.close()
+        titles = chroma_handler.get_all_titles()
         return JSONResponse(content={"titles": sorted(titles)}, status_code=200)
     except Exception as e:
         logging.error(f"Error getting all titles: {e}", exc_info=True)
@@ -227,16 +202,13 @@ def get_all_titles():
 def get_citations(request: CitationRequest):
     try:
         logging.info(f"Received citation request for title '{request.title}' in style: {request.style}")
-        db_handler = get_db_handler()
 
-        doc_id = db_handler.get_document_id_by_title(request.title)
-        if not doc_id:
-            db_handler.close()
+        full_text_chunks = chroma_handler.get_all_chunks_for_document(request.title)
+
+        if not full_text_chunks:
             return JSONResponse(content={"citations": f"No content found for '{request.title}' to generate citations."},
                                 status_code=200)
 
-        full_text_chunks = db_handler.get_all_chunks_for_document(doc_id)
-        db_handler.close()
         full_text = "\n".join(full_text_chunks)
 
         if not full_text:
