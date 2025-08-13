@@ -3,26 +3,40 @@ import os
 import re
 
 import chromadb
-from chromadb.config import Settings
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# We need to disable telemetry to prevent the client from making a connection that could time out.
-settings = Settings(anonymized_telemetry=False)
+# The Chroma server host and port must be set as environment variables
+# in your App Runner service configuration. The host is the public IP
+# address of the EC2 instance you launched.
+chroma_host = os.getenv("CHROMA_SERVER_HOST")
+chroma_port = os.getenv("CHROMA_SERVER_PORT", "8000")
 
-# Use the CloudClient to connect to your remote ChromaDB instance.
-# Ensure your environment variables (CHROMA_API_KEY, CHROMA_TENANT, CHROMA_DATABASE) are correctly set.
-chroma_client = chromadb.CloudClient(
-    api_key=os.getenv("CHROMA_API_KEY"),
-    tenant=os.getenv("CHROMA_TENANT"),
-    database=os.getenv("CHROMA_DATABASE"),
-    settings=settings
-)
+# Ensure the host is set before attempting to create the client.
+# This check prevents the application from crashing if the environment variable is missing.
+if not chroma_host:
+    raise ValueError(
+        "CHROMA_SERVER_HOST environment variable is not set. Please set it to the public IP of your EC2 instance.")
+
+# Use HttpClient to connect to the remote ChromaDB server.
+# This client will communicate with the Chroma instance running on your EC2 machine.
+# This code handles potential connection errors.
+try:
+    client = chromadb.HttpClient(
+        host=chroma_host,
+        port=int(chroma_port)
+    )
+    print(f"Successfully connected to ChromaDB at http://{chroma_host}:{chroma_port}")
+except Exception as e:
+    # If the connection fails, log the error and re-raise it to halt the application.
+    # This is important for App Runner's health checks to detect a failed startup.
+    print(f"Failed to connect to ChromaDB at http://{chroma_host}:{chroma_port}. Error: {e}")
+    raise ConnectionError(f"Could not connect to ChromaDB: {e}")
 
 # Get or create the collection for storing your papers.
-collection = chroma_client.get_or_create_collection("papers")
+collection = client.get_or_create_collection("papers")
 
 
 class ChromaHandler:
