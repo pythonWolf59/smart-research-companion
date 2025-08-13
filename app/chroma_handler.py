@@ -2,20 +2,23 @@ import hashlib
 import os
 import re
 
-# Use the EphemeralClient for an in-memory solution.
-# This prevents network connection issues during startup.
 import chromadb
+from chromadb.config import Settings
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# We need to disable telemetry to prevent the client from making network calls.
-from chromadb.config import Settings
+# We need to disable telemetry to prevent the client from making a connection that could time out.
+settings = Settings(telemetry_disabled=True)
 
-# Instantiate the ephemeral client. It runs entirely in RAM.
-chroma_client = chromadb.EphemeralClient(
-    settings=Settings(telemetry_disabled=True)
+# Use the CloudClient to connect to your remote ChromaDB instance.
+# Ensure your environment variables (CHROMA_API_KEY, CHROMA_TENANT, CHROMA_DATABASE) are correctly set.
+chroma_client = chromadb.CloudClient(
+    api_key=os.getenv("CHROMA_API_KEY"),
+    tenant=os.getenv("CHROMA_TENANT"),
+    database=os.getenv("CHROMA_DATABASE"),
+    settings=settings
 )
 
 # Get or create the collection for storing your papers.
