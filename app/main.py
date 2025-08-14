@@ -223,6 +223,20 @@ def get_citations(request: CitationRequest):
         logging.error(f"Error generating citations for title '{request.title}': {e}", exc_info=True)
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+# --- DELETE ENDPOINT ---
+@app.delete("/delete/{title}")
+def delete_document(title: str):
+    """
+    Deletes all chunks associated with a specific document title from the ChromaDB collection.
+    """
+    try:
+        logging.info(f"Received delete request for title: {title}")
+        message = chroma_handler.delete_document(title)
+        return JSONResponse(content={"message": message}, status_code=200)
+    except Exception as e:
+        logging.error(f"Error deleting document with title '{title}': {e}", exc_info=True)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
 
 # --- OLD ENDPOINTS (UNMODIFIED) ---
 @app.get("/search_papers/")
