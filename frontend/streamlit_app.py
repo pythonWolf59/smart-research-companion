@@ -5,7 +5,7 @@ import json
 # Base URL for the backend API
 # IMPORTANT: For local testing, change this to "http://localhost:8000"
 # For deployment, keep it as your deployed backend URL.
-BASE_URL = "https://ininm9z7m3.us-east-2.awsapprunner.com/"
+BASE_URL = "https://ininm9z7m3.us-east-2.awsapprunner.com"
 
 # Set page configuration for a wider layout and title
 st.set_page_config(layout="wide", page_title="ScholarChat")
